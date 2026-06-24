@@ -53,8 +53,7 @@ ClickWithMarker(x, y, button := "Left") {
     SetTimer(() => g.Destroy(), -500)
 }
 
-
-ClickCenterOfImageInWindow(winTitle, imageFile, timeoutMs := 10000, intervalMs := 250)
+FindImageInWindow(winTitle, imageFile, &outX, &outY, timeoutMs := 10000, intervalMs := 250)
 {
     WinGetPos(&wx, &wy, &ww, &wh, winTitle)
 
@@ -81,7 +80,8 @@ ClickCenterOfImageInWindow(winTitle, imageFile, timeoutMs := 10000, intervalMs :
     {
         if ImageSearch(&x, &y, wx, wy, wx + ww, wy + wh, searchImage)
         {
-            ClickWithMarker(x + Floor(width / 2), y + Floor(height / 2))
+            outX := x + Floor(width / 2)
+            outY := y + Floor(height / 2)
             Log("Found button!")
             return
         }
@@ -92,6 +92,12 @@ ClickCenterOfImageInWindow(winTitle, imageFile, timeoutMs := 10000, intervalMs :
     }
 
     throw Error(Format("Failed to find button {} in window {}", imageFile, winTitle))
+}
+
+ClickCenterOfImageInWindow(winTitle, imageFile, timeoutMs := 10000, intervalMs := 250)
+{
+    FindImageInWindow(winTitle, imageFile, &x, &y, timeoutMs, intervalMs)
+    ClickWithMarker(x, y)
 }
 
 
@@ -107,8 +113,13 @@ Log(Format("Window found at x={1} y={2} w={3} h={4}`n", x, y, w, h))
 
 ClickCenterOfImageInWindow(winTitle, A_ScriptDir "\install-button.png")
 
-ClickCenterOfImageInWindow(winTitle, A_ScriptDir "\launch-button.png", 1000 * 60 * 8)
+; wait for install to finish
+FindImageInWindow(winTitle, A_ScriptDir "\launch-button.png", &launchX, &launchY, 1000 * 60 * 8)
 
+; after we find the install button, close the window so we don't launch hermes.
+WinClose(winTitle)
+
+; yay :D
 Sleep(2000)
 
 ; done
