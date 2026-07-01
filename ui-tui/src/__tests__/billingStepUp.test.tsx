@@ -79,6 +79,7 @@ const ctx = {
   applyAutoReload: vi.fn(() => Promise.resolve(true)),
   charge: vi.fn(() => Promise.resolve('submitted' as const)),
   openPortal: vi.fn(),
+  refreshState: vi.fn(() => Promise.resolve(null)),
   requestRemoteSpending: vi.fn(() => Promise.resolve(true)),
   sys: vi.fn(),
   validate: vi.fn((raw: string) => ({ amount: raw }))

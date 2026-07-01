@@ -75,6 +75,7 @@ const state = (overrides: Partial<SubscriptionStateResponse> = {}): Subscription
 })
 
 const ctx = {
+  fetchCard: vi.fn(() => Promise.resolve(null)),
   openManageLink: vi.fn(() => Promise.resolve(true)),
   openPortal: vi.fn(),
   preview: vi.fn(() => Promise.resolve(null)),

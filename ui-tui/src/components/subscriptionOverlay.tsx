@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { Box, Text, useInput } from '@hermes/ink'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type {
   SubscriptionOverlayState,
@@ -574,6 +574,30 @@ function ConfirmScreen({ onClose, onPatch, overlay, t }: ScreenProps) {
     return onClose()
   }
 
+  // WHICH card the upgrade will charge (brand + last4) — best-effort via
+  // billing.state, shown only when the resolver rung matches what a
+  // subscription charge actually uses (subPin / customerDefault, mirroring
+  // Stripe's own precedence). Anything else → the generic line stands.
+  const [chargeCard, setChargeCard] = useState<null | string>(null)
+
+  useEffect(() => {
+    if (isCancellation || effect !== 'charge_now') {
+      return
+    }
+
+    let cancelled = false
+
+    void ctx.fetchCard().then(card => {
+      if (!cancelled && card && (card.resolved_via === 'subPin' || card.resolved_via === 'customerDefault')) {
+        setChargeCard(card.masked)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [ctx, effect, isCancellation])
+
   const amount = centsDisplay(preview?.amount_due_now_cents)
   const targetName = isCancellation ? null : (preview?.target_tier_name ?? 'the selected plan')
 
@@ -623,7 +647,9 @@ function ConfirmScreen({ onClose, onPatch, overlay, t }: ScreenProps) {
           {preview?.monthly_credits_delta && (
             <Text color={t.color.muted}>Monthly credits change: {preview.monthly_credits_delta}.</Text>
           )}
-          <Text color={t.color.muted}>The card on your subscription will be charged.</Text>
+          <Text color={t.color.muted}>
+            {chargeCard ? `${chargeCard} — the card on your subscription — will be charged.` : 'The card on your subscription will be charged.'}
+          </Text>
         </>
       )}
 

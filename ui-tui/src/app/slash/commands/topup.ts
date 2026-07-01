@@ -344,6 +344,11 @@ const buildOverlayCtx = (ctx: SlashRunCtx, sys: Sys, s: BillingStateResponse): B
     openExternalUrl(url)
     sys(`Opening portal: ${url}`)
   },
+  refreshState: () =>
+    ctx.gateway
+      .rpc<BillingStateResponse>('billing.state', {})
+      .then(r => (r?.ok ? r : null))
+      .catch(() => null),
   sys,
   validate: (raw: string) => validateAmount(raw, s)
 })

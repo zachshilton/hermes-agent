@@ -7311,7 +7311,19 @@ def _serialize_billing_state(state) -> dict:
 
     card = None
     if state.card is not None:
-        card = {"brand": state.card.brand, "last4": state.card.last4, "masked": state.card.masked}
+        card = {
+            "brand": state.card.brand,
+            "last4": state.card.last4,
+            "masked": state.card.masked,
+            # Post-card-resolver fields (None/False on older NAS payloads):
+            # display = "Visa ····4242 — the card on your subscription";
+            # resolved_via = the raw resolution rung, for rung-gated surfaces
+            # (the /subscription confirm only shows the card when the rung
+            # matches what a subscription charge would use).
+            "display": state.card.display,
+            "resolved_via": state.card.resolved_via,
+            "needs_repair": state.card.needs_repair,
+        }
     monthly_cap = None
     if state.monthly_cap is not None:
         mc = state.monthly_cap

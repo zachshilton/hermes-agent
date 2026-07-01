@@ -9865,7 +9865,21 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 _cprint(f"  Upgrade to {target}. You will be charged {_amt} now (prorated).")
             else:
                 _cprint(f"  Upgrade to {target}. You will be charged the prorated amount now.")
-            _cprint(f"  {_d('The card on your subscription will be charged.')}")
+            # Best-effort: name the exact card (billing.state), but only when the
+            # resolver rung matches what a subscription charge actually uses
+            # (subPin / customerDefault — Stripe's own precedence). Any failure or
+            # older NAS → the generic line stands.
+            _card_line = "The card on your subscription will be charged."
+            try:
+                from agent.billing_view import build_billing_state
+
+                _bs = build_billing_state(timeout=6.0)
+                _c = _bs.card if _bs.logged_in else None
+                if _c is not None and _c.resolved_via in ("subPin", "customerDefault"):
+                    _card_line = f"{_c.masked} — the card on your subscription — will be charged."
+            except Exception:
+                pass
+            _cprint(f"  {_d(_card_line)}")
             pay_label = f"Pay {_amt} & upgrade now" if _amt else "Upgrade now (prorated charge)"
             action = ("upgrade", tier_id)
             # The money-moving row is NOT the default — a bare Enter hits "Go back",
@@ -10171,6 +10185,16 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 )
             else:
                 print("  Auto-reload: off")
+        # Card presence at a glance: which card a charge would use (with why —
+        # "the card on your subscription"), or that none is saved. Only for the
+        # full-menu case (admin + billing on) — others get the portal note below.
+        if state.is_admin and state.cli_billing_enabled:
+            if state.card is not None:
+                print(f"  Card: {state.card.display}")
+                if state.card.needs_repair:
+                    _cprint("  ⚠️ This card has been failing automatic top-ups — update it on the portal.")
+            else:
+                _cprint(f"  {_d('No saved card on file — “Add funds” walks you through adding one.')}")
         print(f"  {'─' * 41}")
 
         # Action gating: admin + kill-switch for charge/auto-reload; everyone gets portal.
@@ -10303,6 +10327,48 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
             return False
         return True
 
+    def _billing_add_card_flow(self, state):
+        """No saved card → guide adding one on the portal, with a re-check loop.
+
+        Cards are added on the portal (never in-terminal). "I've added it" re-fetches
+        billing state so the purchase continues right here once the card is saved —
+        this also recovers a transient miss (the card display is best-effort
+        server-side). Returns the refreshed state (card present), or None to abandon.
+        """
+        print()
+        _cprint(f"  💳 {_b('Add a card first')}")
+        _cprint("  No saved card on file.")
+        _cprint(f"  {_d('Add a card once on the portal billing page — after that you can top up right from the terminal.')}")
+        choices = [
+            ("portal", "Add a card on the portal", "opens the billing page in your browser"),
+            ("recheck", "I've added it — check again", "re-check for the card and continue"),
+            ("cancel", "Back", "do nothing"),
+        ]
+        for _ in range(8):  # bounded: portal-open plus a handful of re-checks
+            raw = self._prompt_text_input_modal(title="Add a card", detail="", choices=choices)
+            choice = self._normalize_slash_confirm_choice(raw, choices)
+            if choice == "portal":
+                self._billing_open_portal(state)
+                _cprint(f"  {_d('Add the card on the billing page, then pick “check again” here.')}")
+                continue
+            if choice == "recheck":
+                from agent.billing_view import build_billing_state
+
+                try:
+                    fresh = build_billing_state()
+                except Exception:
+                    fresh = None
+                if fresh is not None and fresh.logged_in:
+                    state = fresh
+                if state.card is not None:
+                    _cprint(f"  {_DIM}✓ Card found: {state.card.display} — continuing.{_RST}")
+                    return state
+                print("  Still no card on file — finish adding it on the portal, then check again.")
+                continue
+            break
+        print("  Cancelled. No funds added.")
+        return None
+
     def _billing_buy_flow(self, state):
         """Screen 2 (preset select) → Screen 3 (confirm + charge + poll)."""
         from agent.billing_view import format_money, validate_charge_amount
@@ -10326,6 +10392,14 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
             self._billing_portal_hint(state)
             return
 
+        # No card on file → the guided ADD-CARD path first (portal + re-check),
+        # so the user isn't walked through picking an amount that will 403.
+        # Returns refreshed state with a card, or None (abandoned).
+        if state.card is None:
+            state = self._billing_add_card_flow(state)
+            if state is None or state.card is None:
+                return
+
         preset_choices = []
         for p in state.charge_presets:
             preset_choices.append((str(p), format_money(p), "one-time credit purchase"))
@@ -10333,7 +10407,9 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
         preset_choices.append(("cancel", "Cancel", "do nothing"))
 
         card = state.card
-        detail = f"Payment: {card.masked}" if card else "No saved card on file"
+        detail = f"Payment: {card.display}" if card else "No saved card on file"
+        if card is not None and card.needs_repair:
+            _cprint("  ⚠️ This card has been failing automatic top-ups — it may decline. Update it on the portal.")
         raw = self._prompt_text_input_modal(
             title="Add funds", detail=detail, choices=preset_choices,
         )
@@ -10376,8 +10452,13 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
         print(f"  {'─' * 41}")
         print(f"  Total: {format_money(amount)}")
         if card:
-            print(f"  Payment: {card.masked}")
-            _cprint(f"  {_d('Your card saved on the portal will be charged.')}")
+            print(f"  Payment: {card.display}")
+            # Provenance-less payloads (older NAS) keep the generic line; when
+            # the resolver says WHY this card, the Payment line carries it.
+            if card.provenance is None:
+                _cprint(f"  {_d('Your card saved on the portal will be charged.')}")
+            if card.needs_repair:
+                _cprint("  ⚠️ This card has been failing automatic top-ups — it may decline. Update it on the portal.")
         print(f"  {'─' * 41}")
         _consent = (
             "By confirming, you allow Nous Research to charge your card."
@@ -10394,7 +10475,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
             return
         raw = self._prompt_text_input_modal(
             title=f"Pay {format_money(amount)}?",
-            detail=(card.masked if card else "no saved card"),
+            detail=(card.display if card else "no saved card"),
             choices=confirm_choices,
         )
         choice = self._normalize_slash_confirm_choice(raw, confirm_choices)

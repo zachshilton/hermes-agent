@@ -316,3 +316,42 @@ def test_upgrade_transport_failure_still_ambiguous_after_narrowing(cli, monkeypa
     out = capsys.readouterr().out
 
     assert "may or may not have been charged" in out
+
+
+@pytest.fixture(autouse=True)
+def _no_card_lookup(monkeypatch):
+    # The charge_now confirm best-effort-fetches billing state to NAME the card
+    # being charged; keep unit tests offline (generic line) unless overridden.
+    import agent.billing_view as bv
+
+    def _offline(*a, **kw):
+        raise RuntimeError("offline")
+
+    monkeypatch.setattr(bv, "build_billing_state", _offline, raising=False)
+
+
+def test_upgrade_confirm_names_the_subscription_card(cli, monkeypatch, capsys):
+    # Post-card-resolver NAS: the confirm names the exact card when it resolved
+    # via the subscription rung (what the upgrade actually charges).
+    cli._app = object()
+    st = _sub_state(tier_id="plus", tier_name="Plus")
+    tiers = tuple(
+        SubscriptionTier(tier_id=t.tier_id, name=t.name, tier_order=t.tier_order, dollars_per_month=t.dollars_per_month, monthly_credits=t.monthly_credits, is_current=(t.tier_id == "plus"), is_enabled=True)
+        for t in _TIERS
+    )
+    object.__setattr__(st, "tiers", tiers)
+    monkeypatch.setattr(sv, "build_subscription_state", lambda *a, **kw: st)
+    # picker → ultra; charge confirm → back out (we only assert the card line)
+    monkeypatch.setattr(HermesCLI, "_prompt_text_input_modal", _scripted_modal("change", "ultra", "cancel"), raising=False)
+    monkeypatch.setattr(nb, "post_subscription_preview", lambda **kw: {"effect": "charge_now", "targetTierName": "Ultra", "amountDueNowCents": 4630})
+    import agent.billing_view as bv
+    from agent.billing_view import BillingState as _BS
+    from agent.billing_view import CardInfo as _CI
+
+    _state = _BS(logged_in=True, card=_CI(brand="Visa", last4="4242", resolved_via="subPin"))
+    monkeypatch.setattr(bv, "build_billing_state", lambda *a, **kw: _state, raising=False)
+
+    cli._show_subscription()
+    out = capsys.readouterr().out
+
+    assert "Visa ····4242 — the card on your subscription — will be charged." in out

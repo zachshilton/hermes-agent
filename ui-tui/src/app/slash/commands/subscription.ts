@@ -1,5 +1,6 @@
 import type {
   BillingMutationResponse,
+  BillingStateResponse,
   SubscriptionPreviewResponse,
   SubscriptionStateResponse,
   SubscriptionUpgradeResponse
@@ -58,6 +59,11 @@ const buildSubscriptionCtx = (
   sys: Sys,
   initialState: SubscriptionStateResponse
 ): SubscriptionOverlayCtx => ({
+  fetchCard: () =>
+    ctx.gateway
+      .rpc<BillingStateResponse>('billing.state', {})
+      .then(r => (r?.ok ? (r.card ?? null) : null))
+      .catch(() => null),
   openManageLink: () => {
     const url = buildManageUrl(initialState)
 
@@ -133,7 +139,8 @@ export const subscriptionCommands: SlashCommand[] = [
     name: 'subscription',
     aliases: ['upgrade'],
     // ZERO sub-commands: bare `/subscription` fetches state and opens the
-    // overlay (deep-link only — NEVER charges in-terminal).
+    // overlay's in-terminal change flow (only /upgrade's charge_now confirm
+    // moves money, via the V3 upgrade route).
     run: (_arg, ctx) => {
       const sys: Sys = ctx.transcript.sys
 

@@ -97,9 +97,9 @@ function OverviewScreen({ ctx, onClose, onPatch, s, t }: ScreenProps) {
 
   // Always show the full billing menu for an admin/billing-on org — a missing
   // card does NOT mean nothing can be done (the org may already have balance,
-  // auto-reload, a limit). The card only matters at CHARGE time: "Add funds"
-  // attempts the charge and, if there's no card (no_payment_method), the buy
-  // flow hands off to the portal to top up / manage billing there.
+  // auto-reload, a limit). The card only matters at CHARGE time: with no card
+  // on file, "Add funds" opens the guided add-card path (portal + check-again)
+  // instead of an amount picker that would 403 no_payment_method.
   const items = full
     ? ['Add funds', 'Auto-reload', 'Monthly limit', 'Manage on portal', 'Cancel']
     : ['Manage on portal', 'Cancel']
@@ -175,6 +175,17 @@ function OverviewScreen({ ctx, onClose, onPatch, s, t }: ScreenProps) {
           /subscription. Renders nothing when no usage model is available. */}
       <UsageBars model={s.usage} t={t} />
       {auto && <Text color={t.color.muted}>{auto}</Text>}
+      {/* Card presence at a glance: which card a charge would use (with why —
+          "the card on your subscription"), or that none is saved. Only for the
+          full menu — members/billing-off get the portal note instead. */}
+      {full && (
+        <Text color={t.color.muted}>
+          {s.card ? `Card: ${s.card.display ?? s.card.masked}` : 'No saved card on file — “Add funds” walks you through adding one.'}
+        </Text>
+      )}
+      {full && s.card?.needs_repair && (
+        <Text color={t.color.warn}>⚠ This card has been failing automatic top-ups — update it on the portal.</Text>
+      )}
       {note && (
         <Box marginTop={1}>
           <Text color={t.color.warn}>{note}</Text>
@@ -197,14 +208,54 @@ function OverviewScreen({ ctx, onClose, onPatch, s, t }: ScreenProps) {
 function BuyScreen({ ctx, onPatch, s, t }: ScreenProps) {
   const presets = s.charge_presets_display
   const rawPresets = s.charge_presets
-  // rows: [...presets, 'Custom amount…', 'Cancel']
-  const rows = [...presets, 'Custom amount…', 'Cancel']
+  // No card on file → the buy screen becomes the ADD-CARD path: cards are added
+  // on the portal (never in-terminal), and "check again" re-fetches state so the
+  // flow continues right here once the card is saved. Card present → the normal
+  // preset menu. (The card display is best-effort server-side, so "check again"
+  // also recovers a transient miss.)
+  const noCard = !s.card
+
+  const rows = noCard
+    ? ['Add a card on the portal', 'I’ve added it — check again', 'Back']
+    : [...presets, 'Custom amount…', 'Cancel']
+
   const customIdx = presets.length
 
   const [sel, setSel] = useState(0)
   const [typing, setTyping] = useState(false)
   const [custom, setCustom] = useState('')
   const [error, setError] = useState<null | string>(null)
+  const [checking, setChecking] = useState(false)
+  // Synchronous guard: double-Enter on "check again" must not stack re-fetches.
+  const checkingRef = useRef(false)
+
+  const recheck = () => {
+    if (checkingRef.current) {
+      return
+    }
+
+    checkingRef.current = true
+    setChecking(true)
+    void ctx.refreshState().then(fresh => {
+      checkingRef.current = false
+      setChecking(false)
+
+      if (!fresh) {
+        return setError('Could not refresh billing state — try again in a moment.')
+      }
+
+      setError(null)
+      // Re-render with the fresh state: if the card is now on file, this same
+      // screen flips into the preset menu and the purchase continues here.
+      onPatch({ state: fresh })
+
+      if (fresh.card) {
+        ctx.sys(`✓ Card found: ${fresh.card.display ?? fresh.card.masked} — pick an amount.`)
+      } else {
+        ctx.sys('Still no card on file — finish adding it on the portal, then check again.')
+      }
+    })
+  }
 
   const toConfirm = (amount: string) => {
     // Mint the idempotency key here (purchase identity = this amount). It rides
@@ -240,6 +291,25 @@ function BuyScreen({ ctx, onPatch, s, t }: ScreenProps) {
   }
 
   const choose = (i: number) => {
+    if (noCard) {
+      if (i === 0) {
+        if (s.portal_url) {
+          ctx.openPortal(s.portal_url)
+          ctx.sys('Add a card on the billing page, then come back and pick “check again”.')
+        } else {
+          setError('Could not build the portal link — is your portal configured?')
+        }
+
+        return
+      }
+
+      if (i === 1) {
+        return recheck()
+      }
+
+      return onPatch({ screen: 'overview' })
+    }
+
     if (i < presets.length) {
       pickPreset(i)
     } else if (i === customIdx) {
@@ -268,7 +338,7 @@ function BuyScreen({ ctx, onPatch, s, t }: ScreenProps) {
     }
 
     if (key.return) {
-      return choose(sel)
+      return choose(Math.min(sel, rows.length - 1))
     }
 
     const n = parseInt(ch, 10)
@@ -278,7 +348,10 @@ function BuyScreen({ ctx, onPatch, s, t }: ScreenProps) {
     }
   })
 
-  const payLine = s.card ? `Payment: ${s.card.masked}` : 'No saved card on file'
+  // sel can go stale when a refresh flips the row set (3 add-card rows ↔ N
+  // preset rows) — clamp for render + Enter.
+  const cSel = Math.min(sel, rows.length - 1)
+  const payLine = s.card ? `Payment: ${s.card.display ?? s.card.masked}` : 'No saved card on file'
 
   if (typing) {
     return (
@@ -300,15 +373,37 @@ function BuyScreen({ ctx, onPatch, s, t }: ScreenProps) {
     )
   }
 
+  if (noCard) {
+    return (
+      <Box flexDirection="column">
+        <Text bold color={t.color.accent}>
+          Add funds
+        </Text>
+        <Text color={t.color.text}>No saved card on file.</Text>
+        <Text color={t.color.muted}>Add a card once on the portal billing page — after that you can top up right from the terminal.</Text>
+        <Text />
+        {rows.map((label, i) => (
+          <MenuRow active={cSel === i} index={i + 1} key={label} label={label} t={t} />
+        ))}
+        {error && <Text color={t.color.error}>{error}</Text>}
+        <Text />
+        {footer(checking ? 'Checking for a card…' : `↑/↓ select · 1-${rows.length} quick pick · Enter confirm · Esc back`, t)}
+      </Box>
+    )
+  }
+
   return (
     <Box flexDirection="column">
       <Text bold color={t.color.accent}>
         Add funds
       </Text>
       <Text color={t.color.muted}>{payLine}</Text>
+      {s.card?.needs_repair && (
+        <Text color={t.color.warn}>⚠ This card has been failing automatic top-ups — it may decline. Update it on the portal.</Text>
+      )}
       <Text />
       {rows.map((label, i) => (
-        <MenuRow active={sel === i} index={i + 1} key={label} label={label} t={t} />
+        <MenuRow active={cSel === i} index={i + 1} key={label} label={label} t={t} />
       ))}
       {error && <Text color={t.color.error}>{error}</Text>}
       <Text />
@@ -398,7 +493,7 @@ function ConfirmScreen({
     }
   })
 
-  const payLine = s.card ? `Payment: ${s.card.masked}` : 'No saved card on file'
+  const payLine = s.card ? `Payment: ${s.card.display ?? s.card.masked}` : 'No saved card on file'
 
   return (
     <Box flexDirection="column">
@@ -407,7 +502,12 @@ function ConfirmScreen({
       </Text>
       <Text color={t.color.text}>Total: ${amount}</Text>
       <Text color={t.color.muted}>{payLine}</Text>
-      {s.card && <Text color={t.color.muted}>Your card saved on the portal will be charged.</Text>}
+      {/* Provenance-less payloads (older NAS) keep the generic line; when the
+          resolver says WHY this card, payLine already carries it. */}
+      {s.card && !s.card.resolved_via && <Text color={t.color.muted}>Your card saved on the portal will be charged.</Text>}
+      {s.card?.needs_repair && (
+        <Text color={t.color.warn}>⚠ This card has been failing automatic top-ups — it may decline. Update it on the portal.</Text>
+      )}
       <Text color={t.color.muted}>By confirming, you allow Nous Research to charge your card.</Text>
       <Text />
       <ActionRow active={sel === 0} color={t.color.ok} label={`Pay $${amount} now`} t={t} />

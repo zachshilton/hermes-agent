@@ -3,7 +3,7 @@ import type { MutableRefObject, ReactNode, RefObject, SetStateAction } from 'rea
 
 import type { PasteEvent } from '../components/textInput.js'
 import type { GatewayClient } from '../gatewayClient.js'
-import type { BillingMutationResponse, BillingStateResponse, ImageAttachResponse, SessionCloseResponse, SubscriptionPreviewResponse, SubscriptionStateResponse, SubscriptionUpgradeResponse } from '../gatewayTypes.js'
+import type { BillingCardInfo, BillingMutationResponse, BillingStateResponse, ImageAttachResponse, SessionCloseResponse, SubscriptionPreviewResponse, SubscriptionStateResponse, SubscriptionUpgradeResponse } from '../gatewayTypes.js'
 import type { ParsedVoiceRecordKey } from '../lib/platform.js'
 import type { RpcResult } from '../lib/rpc.js'
 import type { Theme } from '../theme.js'
@@ -125,6 +125,12 @@ export interface BillingOverlayCtx {
   requestRemoteSpending: () => Promise<boolean>
   /** Open the portal in the browser + echo a transcript line. */
   openPortal: (url: string) => void
+  /**
+   * Re-fetch billing state (`billing.state`) — used by the add-card path's
+   * "I've added it — check again" so a card saved on the portal appears without
+   * re-running /topup. Resolves null on failure (caller keeps the old state).
+   */
+  refreshState: () => Promise<BillingStateResponse | null>
   /** Emit a transcript system line. */
   sys: (text: string) => void
   /** Validate a custom amount against state bounds + 2dp (mirrors the server). */
@@ -180,6 +186,12 @@ export interface StepUpResult {
 }
 
 export interface SubscriptionOverlayCtx {
+  /**
+   * Best-effort card lookup (`billing.state`) for the upgrade confirm — shows
+   * WHICH card the upgrade will charge. Resolves null on any failure or when
+   * the server doesn't say (older NAS): the confirm keeps its generic line.
+   */
+  fetchCard: () => Promise<BillingCardInfo | null>
   /** Build {portal}/manage-subscription?org_id=… locally and open it. Resolves ok/false. */
   openManageLink: () => Promise<boolean>
   /** Open an arbitrary portal recovery URL (e.g. an upgrade's SCA handoff). */

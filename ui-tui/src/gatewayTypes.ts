@@ -49,6 +49,12 @@ export interface BillingCardInfo {
   brand: string
   last4: string
   masked: string
+  /** "Visa ····4242 — the card on your subscription" (= masked when provenance unknown). */
+  display?: string
+  /** The card has been failing automatic top-ups — warn before charging. */
+  needs_repair?: boolean
+  /** Raw card-resolution rung ("subPin" | "customerDefault" | "autoRefill") or null on older NAS. */
+  resolved_via?: null | string
 }
 
 export interface BillingMonthlyCap {
