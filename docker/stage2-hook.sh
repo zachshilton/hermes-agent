@@ -85,6 +85,19 @@ fi
 # is a no-op if the dir already exists. (#18482, salvages #18488)
 mkdir -p "$HERMES_HOME"
 
+# --- Unconditional chown safety net (Railway volume mounts) ---
+# The targeted chown further below only fires when `needs_chown` (a `stat`
+# comparison against the hermes UID) trips — observed on Railway that a
+# freshly-attached volume can still leave $HERMES_HOME unwritable by hermes
+# even though that check didn't flag it (mount timing relative to this
+# script isn't guaranteed to match the final settled ownership), producing
+# a boot-loop PermissionError on $HERMES_HOME/logs. Run an unconditional,
+# best-effort recursive chown up front as a self-healing safety net —
+# harmless no-op when ownership is already correct, and still safe on a
+# bind-mounted host directory since this is the same hermes:hermes target
+# the rest of this script already uses throughout.
+chown -R hermes:hermes "$HERMES_HOME" 2>/dev/null || echo "[stage2] Warning: unconditional chown of $HERMES_HOME failed — continuing"
+
 # Numeric UID/GID validation: must be digits only, non-root, 1-65534.
 # NAS hosts such as Unraid commonly use low non-root IDs (99:100).
 validate_uid_gid() {
