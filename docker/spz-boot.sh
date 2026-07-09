@@ -16,6 +16,7 @@ set -e
 mkdir -p "$HERMES_HOME"
 
 cat > "$HERMES_HOME/config.yaml" <<EOF
+timezone: "Europe/London"
 mcp_servers:
   spz:
     url: "${SPZ_MCP_URL}"
@@ -26,6 +27,23 @@ EOF
 
 if [ -n "${SPZ_SOUL_MD}" ]; then
   printf '%s\n' "${SPZ_SOUL_MD}" > "$HERMES_HOME/SOUL.md"
+fi
+
+# Daily 12PM Roundup — only on the instance with its own SMS gateway
+# (SMS_ALLOWED_USERS is only ever set on hermes-spz, never hermes-manager,
+# so this naturally scopes the job to the right service without a separate
+# flag). "timezone: Europe/London" above means this literal 12:00 stays
+# correct across the BST/GMT clock change year-round — no manual seasonal
+# nudge like the old Vercel cron needed. Idempotent: checked by name so a
+# container restart never creates a duplicate job.
+if [ -n "${SMS_ALLOWED_USERS}" ]; then
+  if ! hermes cron list --all 2>&1 | grep -q "Name:      daily-roundup"; then
+    hermes cron create "0 12 * * *" \
+      "Call get_daily_roundup_text, then send me its exact returned text via SMS — no changes, additions, or commentary of your own." \
+      --name daily-roundup \
+      --deliver "sms:${SMS_ALLOWED_USERS}" \
+      || echo "[spz-boot] Warning: failed to create daily-roundup cron job"
+  fi
 fi
 
 chown -R hermes:hermes "$HERMES_HOME" 2>&1 || echo "[spz-boot] Warning: chown of $HERMES_HOME failed — continuing"
