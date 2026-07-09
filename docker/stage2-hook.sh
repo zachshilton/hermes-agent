@@ -96,7 +96,15 @@ mkdir -p "$HERMES_HOME"
 # harmless no-op when ownership is already correct, and still safe on a
 # bind-mounted host directory since this is the same hermes:hermes target
 # the rest of this script already uses throughout.
-chown -R hermes:hermes "$HERMES_HOME" 2>/dev/null || echo "[stage2] Warning: unconditional chown of $HERMES_HOME failed — continuing"
+echo "[stage2-diag] stage2-hook.sh is running; HERMES_HOME=$HERMES_HOME; current owner uid=$(stat -c %u "$HERMES_HOME" 2>&1); id=$(id)"
+chown -R hermes:hermes "$HERMES_HOME" 2>&1 | head -5
+chown_status=$?
+echo "[stage2-diag] chown -R hermes:hermes $HERMES_HOME exit status: $chown_status"
+chmod -R u+rwX,g+rwX "$HERMES_HOME" 2>&1 | head -5
+chmod_status=$?
+echo "[stage2-diag] chmod -R u+rwX,g+rwX $HERMES_HOME exit status: $chmod_status"
+echo "[stage2-diag] post-fix owner uid=$(stat -c %u "$HERMES_HOME" 2>&1) perms=$(stat -c %a "$HERMES_HOME" 2>&1)"
+true
 
 # Numeric UID/GID validation: must be digits only, non-root, 1-65534.
 # NAS hosts such as Unraid commonly use low non-root IDs (99:100).
