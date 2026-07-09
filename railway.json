@@ -1,6 +1,6 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "deploy": {
-    "startCommand": "hermes --gateway"
+    "startCommand": "sh /opt/hermes/docker/spz-boot.sh"
   }
 }
