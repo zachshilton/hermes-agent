@@ -21,4 +21,4 @@ if [ -n "${SPZ_SOUL_MD}" ]; then
   printf '%s\n' "${SPZ_SOUL_MD}" > "$HERMES_HOME/SOUL.md"
 fi
 
-exec hermes --gateway
+exec hermes gateway run
