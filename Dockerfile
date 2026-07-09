@@ -333,7 +333,12 @@ ENV HERMES_LAZY_INSTALL_TARGET=/opt/data/lazy-packages
 # every other consumer.
 ENV PATH="/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:${PATH}"
 RUN mkdir -p /opt/data
-VOLUME [ "/opt/data" ]
+# VOLUME instruction removed for Railway compatibility — Railway's build
+# pipeline rejects Dockerfiles containing a VOLUME instruction ("use Railway
+# Volumes instead"). Persistence for /opt/data is provided by an actual
+# Railway Volume mounted at this same path at deploy time, not by Docker's
+# own volume metadata, so removing this line changes nothing functionally
+# for that deployment target.
 
 # s6-overlay's /init is PID 1. It sets up the supervision tree, runs
 # /etc/cont-init.d/* (our stage2 hook), starts s6-rc services
