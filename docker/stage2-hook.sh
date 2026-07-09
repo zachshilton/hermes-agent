@@ -85,17 +85,36 @@ fi
 # is a no-op if the dir already exists. (#18482, salvages #18488)
 mkdir -p "$HERMES_HOME"
 
+# --- Wait for a Railway volume to actually finish mounting ---
+# Observed on Railway: this script's own chown of $HERMES_HOME can run
+# BEFORE the platform's volume bind-mount lands on top of it — the "Mounting
+# volume on: ..." log line appears AFTER this script has already run and
+# chowned what was, at that moment, still the pre-mount placeholder
+# directory. The real mounted volume then takes over with its own (uncorrected)
+# ownership, so every restart hits the same PermissionError no matter how
+# many times the chown itself succeeds. Poll for up to ~10s for $HERMES_HOME
+# to actually register as a mountpoint before touching its ownership.
+# No-op (returns immediately) when $HERMES_HOME isn't a separate mount at
+# all — e.g. no volume attached, or the image's own baked-in directory.
+if command -v mountpoint >/dev/null 2>&1; then
+    waited=0
+    while [ "$waited" -lt 100 ]; do
+        mountpoint -q "$HERMES_HOME" 2>/dev/null && break
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    echo "[stage2-diag] waited ${waited}x100ms for $HERMES_HOME mount; is_mountpoint=$(mountpoint -q "$HERMES_HOME" 2>/dev/null && echo yes || echo no)"
+fi
+
 # --- Unconditional chown safety net (Railway volume mounts) ---
 # The targeted chown further below only fires when `needs_chown` (a `stat`
 # comparison against the hermes UID) trips — observed on Railway that a
 # freshly-attached volume can still leave $HERMES_HOME unwritable by hermes
-# even though that check didn't flag it (mount timing relative to this
-# script isn't guaranteed to match the final settled ownership), producing
-# a boot-loop PermissionError on $HERMES_HOME/logs. Run an unconditional,
-# best-effort recursive chown up front as a self-healing safety net —
-# harmless no-op when ownership is already correct, and still safe on a
-# bind-mounted host directory since this is the same hermes:hermes target
-# the rest of this script already uses throughout.
+# even though that check didn't flag it. Run an unconditional, best-effort
+# recursive chown up front (now that we've waited for the real mount) as a
+# self-healing safety net — harmless no-op when ownership is already
+# correct, and still safe on a bind-mounted host directory since this is
+# the same hermes:hermes target the rest of this script already uses.
 echo "[stage2-diag] stage2-hook.sh is running; HERMES_HOME=$HERMES_HOME; current owner uid=$(stat -c %u "$HERMES_HOME" 2>&1); id=$(id)"
 chown -R hermes:hermes "$HERMES_HOME" 2>&1 | head -5
 chown_status=$?
