@@ -17,6 +17,7 @@ mkdir -p "$HERMES_HOME"
 
 cat > "$HERMES_HOME/config.yaml" <<EOF
 timezone: "Europe/London"
+model: "${HERMES_MODEL:-anthropic/claude-sonnet-5}"
 mcp_servers:
   spz:
     url: "${SPZ_MCP_URL}"
