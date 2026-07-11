@@ -47,6 +47,21 @@ if [ -n "${SMS_ALLOWED_USERS}" ]; then
   fi
 fi
 
+# Content-ops poll — only on hermes-manager (CONTENT_OPS_POLL_ENABLED is only
+# ever set there, same scoping trick as the roundup cron above). Runs the
+# whole review->captioned pipeline unattended: approve_video and scan_video
+# are already registered ungated for the manager agent in api/mcp.ts, and
+# scan_video alone now resolves sponsorship + drafts every platform's
+# caption server-side, so this is genuinely just two tool calls per video.
+if [ -n "${CONTENT_OPS_POLL_ENABLED}" ]; then
+  if ! hermes cron list --all 2>&1 | grep -q "Name:      content-ops-poll"; then
+    hermes cron create "*/30 * * * *" \
+      "Call get_pending_videos for faiz, arif, and taha. For each video returned, call approve_video with its details, then scan_video with its drive link — that single follow-up call transcribes it, checks sponsor/topic alignment, resolves sponsorship, and drafts captions for every platform in its category automatically. Do this for every pending video found, without asking me first. If a video errors, skip it and continue with the rest." \
+      --name content-ops-poll \
+      || echo "[spz-boot] Warning: failed to create content-ops-poll cron job"
+  fi
+fi
+
 chown -R hermes:hermes "$HERMES_HOME" 2>&1 || echo "[spz-boot] Warning: chown of $HERMES_HOME failed — continuing"
 
 exec hermes gateway run
