@@ -15,6 +15,83 @@ set -e
 
 mkdir -p "$HERMES_HOME"
 
+# Persona channel relays. A message Zach types in #the-trainer, #the-clinic,
+# #the-manager, #clz or #content-creator is still handled by this (SPZ's)
+# agent — but primed with a per-channel prompt telling it to hand the message
+# straight to that persona's MCP tool and echo the reply back untouched. The
+# persona's own agent, on its own Anthropic key, still writes every word; SPZ
+# is only the carrier. That is why this needs no forwarding endpoint and no
+# Python: the dashboard's api/discord-inbound.ts was built to receive
+# forwarded messages, but this framework's Discord adapter answers with its
+# own agent rather than forwarding anywhere, and config reaches the same end.
+#
+# `channel_prompts` is read out of platforms.discord.extra by the adapter's
+# resolve_channel_prompt (gateway/platforms/base.py) and appended to that one
+# message's ephemeral context in gateway/run.py — so it shapes a single reply
+# and never leaks into #spz or into SOUL.md.
+CHANNEL_PROMPTS=""
+DERIVED_FREE_CHANNELS=""
+
+# $1 = channel id (skipped entirely when unset, so a persona whose channel id
+#      isn't configured simply gets no entry), $2 = the relay prompt.
+add_persona_channel() {
+  [ -n "$1" ] || return 0
+  CHANNEL_PROMPTS="${CHANNEL_PROMPTS}        \"$1\": \"$2\"
+"
+  if [ -z "${DERIVED_FREE_CHANNELS}" ]; then
+    DERIVED_FREE_CHANNELS="$1"
+  else
+    DERIVED_FREE_CHANNELS="${DERIVED_FREE_CHANNELS},$1"
+  fi
+}
+
+# These prompts become YAML double-quoted scalars, so they must contain no
+# double quote and no backslash. Each names its tool AND that tool's argument
+# explicitly, because the four tools take differently-named arguments
+# (instruction / message / goal / brief) and a wrong guess is a silent
+# no-reply in a channel Zach is waiting on.
+add_persona_channel "${DISCORD_CHANNEL_TRAINER}" \
+  "This channel belongs to The Trainer, the agent for The Gym. Do not answer it yourself: pass Zach's message to the instruct_trainer tool as its instruction argument, then reply with exactly the text that tool returns - no preamble, summary or commentary of your own. If the tool errors, say so plainly and quote the error rather than answering in its place."
+add_persona_channel "${DISCORD_CHANNEL_CLINIC}" \
+  "This channel belongs to The Medical Team, the agent for The Clinic. Do not answer it yourself: pass Zach's message to the ask_medical tool as its message argument, then reply with exactly the text that tool returns - no preamble, summary or commentary of your own. If the tool errors, say so plainly and quote the error rather than answering in its place."
+add_persona_channel "${DISCORD_CHANNEL_MANAGER}" \
+  "This channel belongs to The Manager, the agent that runs the content-ops pipeline. Do not answer it yourself: pass Zach's message to the ask_manager tool as its message argument, then reply with exactly the text that tool returns - no preamble, summary or commentary of your own. Use instruct_manager instead only when Zach clearly wants a preference remembered going forward. If the tool errors, say so plainly and quote the error."
+add_persona_channel "${DISCORD_CHANNEL_CLZ}" \
+  "This channel belongs to CLZ, the agent for Organic Ecom. Do not answer it yourself: pass Zach's message to the delegate_to_clz tool as its goal argument, then reply with exactly the text that tool returns - no preamble, summary or commentary of your own. That tool runs a real task and can take a while, so wait for it. If it errors, say so plainly and quote the error."
+add_persona_channel "${DISCORD_CHANNEL_CONTENT}" \
+  "This channel belongs to the AI Content Creator. Do not answer it yourself: pass Zach's brief to the request_content_generation tool as its brief argument, then reply with exactly the text that tool returns - no preamble, summary or commentary of your own. If the tool errors, say so plainly and quote the error."
+
+# A persona channel is useless if every message needs an @mention first
+# (DISCORD_REQUIRE_MENTION defaults to true), so the channels wired above join
+# the free-response list automatically, along with #spz and #approvals — the
+# latter is load-bearing, since a free-typed `YES <code>` there is never seen
+# otherwise. Guarded on the variable being unset so an explicit Railway value
+# still wins, matching the adapter's own env-beats-YAML convention; the cost of
+# setting it by hand is that you must then list every channel yourself.
+if [ -z "${DISCORD_FREE_RESPONSE_CHANNELS}" ] && [ -n "${DERIVED_FREE_CHANNELS}" ]; then
+  for _extra in "${DISCORD_CHANNEL_SPZ}" "${DISCORD_CHANNEL_APPROVALS}"; do
+    [ -n "${_extra}" ] || continue
+    DERIVED_FREE_CHANNELS="${_extra},${DERIVED_FREE_CHANNELS}"
+  done
+  DISCORD_FREE_RESPONSE_CHANNELS="${DERIVED_FREE_CHANNELS}"
+  export DISCORD_FREE_RESPONSE_CHANNELS
+  echo "[spz-boot] Free-response channels derived: ${DISCORD_FREE_RESPONSE_CHANNELS}"
+fi
+
+# Omitted entirely rather than emitted empty when no channel ids are set — a
+# bare `channel_prompts:` key would parse as null, which resolve_channel_prompt
+# tolerates, but an absent block keeps the generated config honest about what
+# this instance actually has wired.
+if [ -n "${CHANNEL_PROMPTS}" ]; then
+  PLATFORMS_BLOCK="platforms:
+  discord:
+    extra:
+      channel_prompts:
+${CHANNEL_PROMPTS}"
+else
+  PLATFORMS_BLOCK=""
+fi
+
 cat > "$HERMES_HOME/config.yaml" <<EOF
 timezone: "Europe/London"
 model: "${HERMES_MODEL:-anthropic/claude-sonnet-5}"
@@ -24,6 +101,7 @@ mcp_servers:
     headers:
       Authorization: "Bearer ${SPZ_MCP_TOKEN}"
     timeout: 180
+${PLATFORMS_BLOCK}
 EOF
 
 if [ -n "${SPZ_SOUL_MD}" ]; then
