@@ -30,20 +30,34 @@ if [ -n "${SPZ_SOUL_MD}" ]; then
   printf '%s\n' "${SPZ_SOUL_MD}" > "$HERMES_HOME/SOUL.md"
 fi
 
-# Daily 12PM Roundup — only on the instance with its own SMS gateway
-# (SMS_ALLOWED_USERS is only ever set on hermes-spz, never hermes-manager,
+# Daily 12PM Roundup — only on the instance Zach actually talks to
+# (DISCORD_ALLOWED_USERS is only ever set on hermes-spz, never hermes-manager,
 # so this naturally scopes the job to the right service without a separate
-# flag). "timezone: Europe/London" above means this literal 12:00 stays
-# correct across the BST/GMT clock change year-round — no manual seasonal
-# nudge like the old Vercel cron needed. Idempotent: checked by name so a
-# container restart never creates a duplicate job.
-if [ -n "${SMS_ALLOWED_USERS}" ]; then
-  if ! hermes cron list --all 2>&1 | grep -q "Name:      daily-roundup"; then
+# flag). This guard used to key off SMS_ALLOWED_USERS; SMS is gone, and had
+# the guard not moved with it the roundup cron would simply have stopped
+# being created, silently and with nothing failing. "timezone: Europe/London"
+# above means this literal 12:00 stays correct across the BST/GMT clock change
+# year-round — no manual seasonal nudge like the old Vercel cron needed.
+# Idempotent: checked by name so a container restart never creates a duplicate.
+#
+# Delivery goes to DISCORD_HOME_CHANNEL (#spz) via the platform's registered
+# standalone sender, so it works whether or not the gateway happens to be
+# mid-restart when the cron fires.
+if [ -n "${DISCORD_ALLOWED_USERS}" ]; then
+  # One-time migration, not a manual step: the pre-Discord job was created with
+  # --deliver "sms:...", and the name check below would happily leave it in
+  # place forever, still trying to send over a gateway that no longer exists.
+  # Removing the old name is safe to attempt on every boot — once it's gone the
+  # command just fails and is suppressed. `hermes cron remove` resolves by name
+  # as well as id (cron/jobs.py resolve_job_ref), so no id lookup is needed.
+  hermes cron remove daily-roundup >/dev/null 2>&1 || true
+
+  if ! hermes cron list --all 2>&1 | grep -q "Name:      daily-roundup-discord"; then
     hermes cron create "0 12 * * *" \
-      "Call get_daily_roundup_text, then send me its exact returned text via SMS — no changes, additions, or commentary of your own." \
-      --name daily-roundup \
-      --deliver "sms:${SMS_ALLOWED_USERS}" \
-      || echo "[spz-boot] Warning: failed to create daily-roundup cron job"
+      "Call get_daily_roundup_text, then post its exact returned text — no changes, additions, or commentary of your own." \
+      --name daily-roundup-discord \
+      --deliver "discord" \
+      || echo "[spz-boot] Warning: failed to create daily-roundup-discord cron job"
   fi
 fi
 
