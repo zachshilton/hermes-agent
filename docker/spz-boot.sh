@@ -17,7 +17,8 @@ set -e
 # DISCORD_*/HERMES_* names that survive below are read by the framework
 # itself — DISCORD_ALLOWED_USERS by gateway/authz_mixin.py and
 # gateway/pairing.py, DISCORD_FREE_RESPONSE_CHANNELS and
-# DISCORD_REQUIRE_MENTION by plugins/platforms/discord/adapter.py,
+# DISCORD_REQUIRE_MENTION and DISCORD_ALLOWED_CHANNELS by
+# plugins/platforms/discord/adapter.py,
 # DISCORD_HOME_CHANNEL and HERMES_MODEL by cron/scheduler.py — so they must
 # keep their upstream spelling. Renaming one would leave the adapter looking
 # for a variable nobody sets, which is silent: no error, just an agent that
@@ -26,6 +27,52 @@ set -e
 # old ones. Drop the fallbacks once Railway is updated.
 
 mkdir -p "$HERMES_HOME"
+
+# Which of the fleet this container is. Each persona is moving onto its own
+# Railway service with its own Discord bot, scoped to its own channel, so Zach
+# talks to each agent directly instead of through SPZ; hermes-spz keeps #spz and
+# #approvals. SPZ_ROLE names that.
+#
+# It defaults to "spz" deliberately: a service whose Railway variables have not
+# been touched must boot exactly as it did before this variable existed, so
+# landing this change is a no-op everywhere until Railway says otherwise. Every
+# role-dependent branch below is written as "spz is the status quo, a persona is
+# the departure" for the same reason.
+SPZ_ROLE="${SPZ_ROLE:-spz}"
+case "${SPZ_ROLE}" in
+  spz|trainer|clinic|manager|clz) ;;
+  *)
+    # Warn, don't exit. This is a container start command: refusing to boot on a
+    # typo takes the agent offline, which is worse than running scoped. An
+    # unrecognized role is treated as a persona rather than as spz, because
+    # hermes-spz is the one service that never sets the variable at all — so a
+    # typo can only come from a persona service, where the safe reading is
+    # "scope me and relay for nobody", not "behave like SPZ".
+    echo "[spz-boot] Warning: unrecognized SPZ_ROLE '${SPZ_ROLE}' — treating this as a persona instance, not spz"
+    ;;
+esac
+
+# Which persona relays this instance still carries: a comma-separated list of
+# persona keys (trainer, clinic, manager, clz), no spaces. As each persona gets
+# its own container its key comes out of this list on hermes-spz and SPZ stops
+# relaying for it — the channel then belongs to that persona's own bot, and two
+# bots answering the same channel is the failure this avoids.
+#
+# Unset on hermes-spz means all four, which is exactly today's behaviour. Unset
+# on a persona container means none: a persona answers as itself and carries
+# nobody. An explicit value always wins either way, and the literal "none"
+# spells out an empty list (an empty string can't, since sh cannot distinguish
+# unset from empty here without ${VAR+x} gymnastics that read worse than a word).
+if [ -n "${SPZ_RELAY_CHANNELS}" ]; then
+  SPZ_RELAY_LIST="${SPZ_RELAY_CHANNELS}"
+elif [ "${SPZ_ROLE}" = "spz" ]; then
+  SPZ_RELAY_LIST="trainer,clinic,manager,clz"
+else
+  SPZ_RELAY_LIST="none"
+fi
+if [ "${SPZ_RELAY_LIST}" = "none" ]; then
+  SPZ_RELAY_LIST=""
+fi
 
 # Persona channel relays. A message Zach types in #the-trainer, #the-clinic,
 # #the-manager, #clz or #content-creator is still handled by this (SPZ's)
@@ -44,16 +91,24 @@ mkdir -p "$HERMES_HOME"
 CHANNEL_PROMPTS=""
 DERIVED_FREE_CHANNELS=""
 
-# $1 = channel id (skipped entirely when unset, so a persona whose channel id
-#      isn't configured simply gets no entry), $2 = the relay prompt.
+# $1 = persona key, matched against SPZ_RELAY_LIST — a persona that has moved to
+#      its own container is filtered out here, and because DERIVED_FREE_CHANNELS
+#      is accumulated in this same function, it leaves the free-response list at
+#      the same time and for the same reason. There is no second place to edit.
+# $2 = channel id (skipped entirely when unset, so a persona whose channel id
+#      isn't configured simply gets no entry), $3 = the relay prompt.
 add_persona_channel() {
-  [ -n "$1" ] || return 0
-  CHANNEL_PROMPTS="${CHANNEL_PROMPTS}        \"$1\": \"$2\"
+  case ",${SPZ_RELAY_LIST}," in
+    *",$1,"*) ;;
+    *) return 0 ;;
+  esac
+  [ -n "$2" ] || return 0
+  CHANNEL_PROMPTS="${CHANNEL_PROMPTS}        \"$2\": \"$3\"
 "
   if [ -z "${DERIVED_FREE_CHANNELS}" ]; then
-    DERIVED_FREE_CHANNELS="$1"
+    DERIVED_FREE_CHANNELS="$2"
   else
-    DERIVED_FREE_CHANNELS="${DERIVED_FREE_CHANNELS},$1"
+    DERIVED_FREE_CHANNELS="${DERIVED_FREE_CHANNELS},$2"
   fi
 }
 
@@ -62,13 +117,13 @@ add_persona_channel() {
 # explicitly, because the four tools take differently-named arguments
 # (instruction / message / goal / brief) and a wrong guess is a silent
 # no-reply in a channel Zach is waiting on.
-add_persona_channel "${SPZ_CHANNEL_TRAINER:-${DISCORD_CHANNEL_TRAINER}}" \
+add_persona_channel trainer "${SPZ_CHANNEL_TRAINER:-${DISCORD_CHANNEL_TRAINER}}" \
   "This channel belongs to The Trainer, the agent for The Gym. Do not answer it yourself: pass Zach's message to the instruct_trainer tool as its instruction argument, then reply with exactly the text that tool returns - no preamble, summary or commentary of your own. If the tool errors, say so plainly and quote the error rather than answering in its place."
-add_persona_channel "${SPZ_CHANNEL_CLINIC:-${DISCORD_CHANNEL_CLINIC}}" \
+add_persona_channel clinic "${SPZ_CHANNEL_CLINIC:-${DISCORD_CHANNEL_CLINIC}}" \
   "This channel belongs to The Medical Team, the agent for The Clinic. Do not answer it yourself: pass Zach's message to the ask_medical tool as its message argument, then reply with exactly the text that tool returns - no preamble, summary or commentary of your own. If the tool errors, say so plainly and quote the error rather than answering in its place."
-add_persona_channel "${SPZ_CHANNEL_MANAGER:-${DISCORD_CHANNEL_MANAGER}}" \
+add_persona_channel manager "${SPZ_CHANNEL_MANAGER:-${DISCORD_CHANNEL_MANAGER}}" \
   "This channel belongs to The Manager, the agent that runs the content-ops pipeline. Do not answer it yourself: pass Zach's message to the ask_manager tool as its message argument, then reply with exactly the text that tool returns - no preamble, summary or commentary of your own. Use instruct_manager instead only when Zach clearly wants a preference remembered going forward. If the tool errors, say so plainly and quote the error."
-add_persona_channel "${SPZ_CHANNEL_CLZ:-${DISCORD_CHANNEL_CLZ}}" \
+add_persona_channel clz "${SPZ_CHANNEL_CLZ:-${DISCORD_CHANNEL_CLZ}}" \
   "This channel belongs to CLZ, the agent for Organic Ecom. Do not answer it yourself: pass Zach's message to the delegate_to_clz tool as its goal argument, then reply with exactly the text that tool returns - no preamble, summary or commentary of your own. That tool runs a real task and can take a while, so wait for it. If it errors, say so plainly and quote the error."
 
 # The AI Content Creator was here, relaying to request_content_generation. That
@@ -79,6 +134,30 @@ add_persona_channel "${SPZ_CHANNEL_CLZ:-${DISCORD_CHANNEL_CLZ}}" \
 # (contentAgent.ts, the request_content_generation tool, the content MCP token)
 # are a separate cleanup in that repo.
 
+# A persona container runs its own Discord bot and owns exactly one channel.
+# Scoping it there is two framework variables, neither of which this script
+# invents: DISCORD_ALLOWED_CHANNELS is the adapter's whitelist — once set, every
+# message outside it is dropped, by on_message and by the slash-command gate
+# alike (plugins/platforms/discord/adapter.py) — and DISCORD_FREE_RESPONSE_CHANNELS
+# waives DISCORD_REQUIRE_MENTION, which defaults to true, so Zach can just type
+# instead of @mentioning a single-purpose bot in its own channel every message.
+# Both are set only when Railway has not set them explicitly, the same
+# env-beats-derived rule the free-response block below follows.
+#
+# Deliberately inert when SPZ_ROLE is spz: hermes-spz answers in several
+# channels, so a whitelist of one would be exactly wrong there.
+if [ "${SPZ_ROLE}" != "spz" ] && [ -n "${SPZ_PERSONA_CHANNEL}" ]; then
+  if [ -z "${DISCORD_ALLOWED_CHANNELS}" ]; then
+    DISCORD_ALLOWED_CHANNELS="${SPZ_PERSONA_CHANNEL}"
+    export DISCORD_ALLOWED_CHANNELS
+  fi
+  if [ -z "${DISCORD_FREE_RESPONSE_CHANNELS}" ]; then
+    DISCORD_FREE_RESPONSE_CHANNELS="${SPZ_PERSONA_CHANNEL}"
+    export DISCORD_FREE_RESPONSE_CHANNELS
+  fi
+  echo "[spz-boot] Role ${SPZ_ROLE} scoped to channel ${SPZ_PERSONA_CHANNEL}"
+fi
+
 # A persona channel is useless if every message needs an @mention first
 # (DISCORD_REQUIRE_MENTION defaults to true), so the channels wired above join
 # the free-response list automatically, along with #spz and #approvals — the
@@ -86,15 +165,30 @@ add_persona_channel "${SPZ_CHANNEL_CLZ:-${DISCORD_CHANNEL_CLZ}}" \
 # otherwise. Guarded on the variable being unset so an explicit Railway value
 # still wins, matching the adapter's own env-beats-YAML convention; the cost of
 # setting it by hand is that you must then list every channel yourself.
-if [ -z "${DISCORD_FREE_RESPONSE_CHANNELS}" ] && [ -n "${DERIVED_FREE_CHANNELS}" ]; then
+#
+# #spz and #approvals are added whether or not any relay survived. They used to
+# be reached only when at least one persona channel was wired, which was fine
+# while SPZ carried all four — but the whole point of SPZ_RELAY_CHANNELS is that
+# that number falls to zero as the personas move out, and #approvals losing
+# free-response on the boot where the last relay leaves is precisely the silent
+# failure this file keeps warning about. The export itself is still guarded on
+# there being something to export, so an instance with no channel ids at all
+# still sets nothing.
+if [ -z "${DISCORD_FREE_RESPONSE_CHANNELS}" ]; then
   for _extra in "${SPZ_CHANNEL_HOME:-${DISCORD_CHANNEL_SPZ}}" \
                 "${SPZ_CHANNEL_APPROVALS:-${DISCORD_CHANNEL_APPROVALS}}"; do
     [ -n "${_extra}" ] || continue
-    DERIVED_FREE_CHANNELS="${_extra},${DERIVED_FREE_CHANNELS}"
+    if [ -z "${DERIVED_FREE_CHANNELS}" ]; then
+      DERIVED_FREE_CHANNELS="${_extra}"
+    else
+      DERIVED_FREE_CHANNELS="${_extra},${DERIVED_FREE_CHANNELS}"
+    fi
   done
-  DISCORD_FREE_RESPONSE_CHANNELS="${DERIVED_FREE_CHANNELS}"
-  export DISCORD_FREE_RESPONSE_CHANNELS
-  echo "[spz-boot] Free-response channels derived: ${DISCORD_FREE_RESPONSE_CHANNELS}"
+  if [ -n "${DERIVED_FREE_CHANNELS}" ]; then
+    DISCORD_FREE_RESPONSE_CHANNELS="${DERIVED_FREE_CHANNELS}"
+    export DISCORD_FREE_RESPONSE_CHANNELS
+    echo "[spz-boot] Free-response channels derived: ${DISCORD_FREE_RESPONSE_CHANNELS}"
+  fi
 fi
 
 # Omitted entirely rather than emitted empty when no channel ids are set — a
@@ -162,7 +256,13 @@ fi
 # taking the roundup with it silently. A flag that exists only to answer "is
 # this hermes-spz?" cannot be retired out from under the cron. It still falls
 # back to DISCORD_ALLOWED_USERS so this redeploy is safe before the Railway
-# variable exists. "timezone: Europe/London"
+# variable exists — but that fallback is now honoured only when SPZ_ROLE is spz.
+# Every persona container sets DISCORD_ALLOWED_USERS (Zach has to be allowed to
+# talk to his own agent), so an unnarrowed fallback would hand all four of them
+# a 12PM roundup cron posting into their own channel. The guard itself is
+# untouched and still keys on SPZ_ROUNDUP_ENABLED — SPZ_ROLE only gates the
+# deprecated pre-rename fallback, and once that fallback is dropped this becomes
+# two lines to delete. "timezone: Europe/London"
 # above means this literal 12:00 stays correct across the BST/GMT clock change
 # year-round — no manual seasonal nudge like the old Vercel cron needed.
 # Idempotent: checked by name so a container restart never creates a duplicate.
@@ -170,7 +270,11 @@ fi
 # Delivery goes to DISCORD_HOME_CHANNEL (#spz) via the platform's registered
 # standalone sender, so it works whether or not the gateway happens to be
 # mid-restart when the cron fires.
-if [ -n "${SPZ_ROUNDUP_ENABLED:-${DISCORD_ALLOWED_USERS}}" ]; then
+SPZ_ROUNDUP_GUARD="${SPZ_ROUNDUP_ENABLED}"
+if [ -z "${SPZ_ROUNDUP_GUARD}" ] && [ "${SPZ_ROLE}" = "spz" ]; then
+  SPZ_ROUNDUP_GUARD="${DISCORD_ALLOWED_USERS}"
+fi
+if [ -n "${SPZ_ROUNDUP_GUARD}" ]; then
   # One-time migrations, not manual steps. Each superseded name has to be
   # removed explicitly, because the name check below only ever asks whether the
   # CURRENT name exists — an old job it doesn't know about would sit there

@@ -13,7 +13,8 @@ skill-vs-tool decision guide.
 ## SPZ: a deployment fork, not an upstream dev checkout
 
 This project is **SPZ**. `origin` is `github.com/zachshilton/hermes-agent` (a fork of
-NousResearch/Hermes-Agent), deployed on Railway as the `hermes-spz` and `hermes-manager` services;
+NousResearch/Hermes-Agent), deployed on Railway as the `hermes-spz` and `hermes-manager` services, plus one service per persona
+(see "One container per persona" below);
 the dashboard and MCP server it talks to (`api/mcp.ts`, `api/discord-inbound.ts`) live in a separate
 SPZ repo. Refer to the project as SPZ, not Hermes — "Hermes" means the vendored upstream framework.
 Every commit unique to this fork touches exactly three files:
@@ -36,8 +37,8 @@ change can be made in generated `config.yaml` or env vars, do it there.
 
 Every variable `spz-boot.sh` alone consumes carries an `SPZ_` prefix: `SPZ_MCP_URL`,
 `SPZ_MCP_TOKEN`, `SPZ_SOUL_MD`, `SPZ_CHANNEL_{TRAINER,CLINIC,MANAGER,CLZ,CONTENT,HOME,APPROVALS}`,
-`SPZ_ROUNDUP_ENABLED`, `SPZ_CONTENT_OPS_POLL`. Cron jobs follow suit: `spz-daily-roundup`,
-`spz-content-ops-poll`.
+`SPZ_ROUNDUP_ENABLED`, `SPZ_CONTENT_OPS_POLL`, `SPZ_ROLE`, `SPZ_PERSONA_CHANNEL`,
+`SPZ_RELAY_CHANNELS`. Cron jobs follow suit: `spz-daily-roundup`, `spz-content-ops-poll`.
 
 The names that stay upstream-spelled do so because the framework reads them, and renaming one fails
 silently — nothing errors, the adapter just never sees the value:
@@ -45,7 +46,7 @@ silently — nothing errors, the adapter just never sees the value:
 | Variable | Framework consumer |
 |---|---|
 | `DISCORD_ALLOWED_USERS` | `gateway/authz_mixin.py`, `gateway/pairing.py` |
-| `DISCORD_FREE_RESPONSE_CHANNELS`, `DISCORD_REQUIRE_MENTION` | `plugins/platforms/discord/adapter.py` |
+| `DISCORD_FREE_RESPONSE_CHANNELS`, `DISCORD_REQUIRE_MENTION`, `DISCORD_ALLOWED_CHANNELS` | `plugins/platforms/discord/adapter.py` |
 | `DISCORD_HOME_CHANNEL` | `cron/scheduler.py`, `gateway/config.py` |
 | `HERMES_MODEL` | `cron/scheduler.py` (per-job override > env) |
 | `HERMES_HOME` | core, everywhere |
@@ -66,6 +67,43 @@ Three conventions in `spz-boot.sh`, each of which has caused a silent failure:
   removes `daily-roundup`, `daily-roundup-discord` and `content-ops-poll` on every boot.
 - **Discord channel ids must stay quoted** in the emitted YAML. Unquoted they parse as ints and
   every `channel_prompts` lookup (which keys on the adapter's string id) misses.
+
+### One container per persona
+
+The original shape was one container: `hermes-spz` answered every persona channel itself, primed by
+`channel_prompts` to relay each message to that persona's MCP tool. Each persona is now moving onto
+its own Railway service with its own Discord bot and its own `SOUL.md`, scoped to its own channel,
+so Zach talks to the agent directly instead of through a carrier. Three variables drive the move:
+
+| Variable | Meaning |
+|---|---|
+| `SPZ_ROLE` | `spz` (default) \| `trainer` \| `clinic` \| `manager` \| `clz`. Which container this is. Unrecognized values warn and are treated as a persona, not as `spz` — a start command must not refuse to boot over a typo. |
+| `SPZ_PERSONA_CHANNEL` | The one channel id this persona owns. On a non-`spz` role it derives `DISCORD_ALLOWED_CHANNELS` (whitelist: the bot ignores every other channel) and `DISCORD_FREE_RESPONSE_CHANNELS` (waives `DISCORD_REQUIRE_MENTION`, which defaults to true). Both only when Railway hasn't set them explicitly. |
+| `SPZ_RELAY_CHANNELS` | Comma-separated persona keys (`trainer,clinic,manager,clz`, no spaces) this instance still emits `channel_prompts` for. Unset means all four on `spz` and none on a persona. The literal `none` spells out an empty list. |
+
+`SPZ_ROLE` defaults to `spz` so that a service whose Railway variables have not been touched boots
+exactly as it did before the variable existed — landing the change is a no-op until Railway says
+otherwise, which is the whole safety story. Every role-dependent branch is written as "spz is the
+status quo, a persona is the departure" for the same reason.
+
+The migration is one persona at a time: stand up the persona's service, then drop its key from
+`SPZ_RELAY_CHANNELS` on `hermes-spz`. Because `DERIVED_FREE_CHANNELS` is accumulated inside
+`add_persona_channel`, a persona that drops out of the relay list leaves the free-response list in
+the same breath — there is no second place to edit. #spz and #approvals are added to that list
+regardless of how many relays survive, so the boot where the last persona moves out doesn't
+silently cost #approvals its free-typed `YES <code>`.
+
+A persona service needs: `SPZ_ROLE`, `SPZ_PERSONA_CHANNEL`, `SPZ_SOUL_MD`, `SPZ_MCP_URL`,
+`SPZ_MCP_TOKEN`, `ANTHROPIC_API_KEY`, `DISCORD_BOT_TOKEN` (its own bot, invited to the guild with
+read/send on its one channel), `DISCORD_ALLOWED_USERS`, `DISCORD_HOME_CHANNEL` (set to the same id as `SPZ_PERSONA_CHANNEL` — it
+is the destination for cron and proactive delivery, and is not derived), and optionally
+`HERMES_MODEL`.
+`HERMES_HOME` is baked in by the image (`ENV HERMES_HOME=/opt/data`) and only needs a Railway
+volume mounted there. It must **not** get `SPZ_ROUNDUP_ENABLED` or `SPZ_CONTENT_OPS_POLL` —
+those stay on `hermes-spz` and `hermes-manager` respectively, per the dedicated-flag rule above.
+The roundup's deprecated `DISCORD_ALLOWED_USERS` fallback is honoured only when `SPZ_ROLE` is
+`spz`, because every persona service sets `DISCORD_ALLOWED_USERS` and would otherwise inherit a
+12PM roundup cron; the guard itself still keys on `SPZ_ROUNDUP_ENABLED`.
 
 ## Commands
 
