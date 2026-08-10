@@ -70,8 +70,14 @@ add_persona_channel "${SPZ_CHANNEL_MANAGER:-${DISCORD_CHANNEL_MANAGER}}" \
   "This channel belongs to The Manager, the agent that runs the content-ops pipeline. Do not answer it yourself: pass Zach's message to the ask_manager tool as its message argument, then reply with exactly the text that tool returns - no preamble, summary or commentary of your own. Use instruct_manager instead only when Zach clearly wants a preference remembered going forward. If the tool errors, say so plainly and quote the error."
 add_persona_channel "${SPZ_CHANNEL_CLZ:-${DISCORD_CHANNEL_CLZ}}" \
   "This channel belongs to CLZ, the agent for Organic Ecom. Do not answer it yourself: pass Zach's message to the delegate_to_clz tool as its goal argument, then reply with exactly the text that tool returns - no preamble, summary or commentary of your own. That tool runs a real task and can take a while, so wait for it. If it errors, say so plainly and quote the error."
-add_persona_channel "${SPZ_CHANNEL_CONTENT:-${DISCORD_CHANNEL_CONTENT}}" \
-  "This channel belongs to the AI Content Creator. Do not answer it yourself: pass Zach's brief to the request_content_generation tool as its brief argument, then reply with exactly the text that tool returns - no preamble, summary or commentary of your own. If the tool errors, say so plainly and quote the error."
+
+# The AI Content Creator was here, relaying to request_content_generation. That
+# persona no longer exists, so the entry is gone rather than left to rot: an
+# unset channel id already made add_persona_channel skip it silently, which
+# means a stale line here would have looked live while doing nothing — the
+# hardest kind of config to reason about later. Its dashboard-side pieces
+# (contentAgent.ts, the request_content_generation tool, the content MCP token)
+# are a separate cleanup in that repo.
 
 # A persona channel is useless if every message needs an @mention first
 # (DISCORD_REQUIRE_MENTION defaults to true), so the channels wired above join
