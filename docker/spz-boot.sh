@@ -105,9 +105,36 @@ else
   PLATFORMS_BLOCK=""
 fi
 
+# Discord is the framework's most verbose display tier by default
+# (gateway/display_config.py's _TIER_HIGH), and this config previously set no
+# display block at all — so every persona channel was narrating the relay it
+# exists to hide. A message to #the-trainer produced a "⚙️
+# mcp__spz__instruct_trainer" bubble quoting the first 40 characters back, any
+# preamble SPZ emitted alongside the tool call as its own separate message (the
+# channel prompt's "no preamble" only ever governed the final turn), a "⏳
+# Working — 3 min" heartbeat, and none of it cleaned up afterwards. The four
+# settings below leave the channel showing the question and the persona's
+# answer, which is what it was always meant to look like.
+#
+# "off" MUST stay quoted. The config is read with yaml.safe_load, which is YAML
+# 1.1, where a bare off is the boolean False — and the resolver compares this
+# value against the string "off". Unquoted it silently does nothing, which is
+# the same class of trap as the unquoted channel ids below.
+#
+# Note this is per-platform, not per-channel: display settings resolve on the
+# platform key alone (ChannelOverride carries only model/provider/system_prompt),
+# so this quietens #spz too. That is the accepted cost — there is no per-channel
+# layer to hang it on.
 cat > "$HERMES_HOME/config.yaml" <<EOF
 timezone: "Europe/London"
 model: "${HERMES_MODEL:-anthropic/claude-sonnet-5}"
+display:
+  platforms:
+    discord:
+      tool_progress: "off"
+      interim_assistant_messages: false
+      long_running_notifications: false
+      busy_ack_detail: false
 mcp_servers:
   spz:
     url: "${SPZ_MCP_URL}"
