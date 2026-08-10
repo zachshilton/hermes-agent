@@ -158,6 +158,107 @@ if [ "${SPZ_ROLE}" != "spz" ] && [ -n "${SPZ_PERSONA_CHANNEL}" ]; then
   echo "[spz-boot] Role ${SPZ_ROLE} scoped to channel ${SPZ_PERSONA_CHANNEL}"
 fi
 
+# Agent-to-agent conversation. Each persona listens in exactly one channel (the
+# whitelist just above) and now admits messages authored by other bots there, so
+# the fleet talks to each other in the persona channels rather than in a room of
+# their own: the Manager asks the Trainer by posting in #the-trainer, and the
+# Trainer answers in #the-trainer.
+#
+# That one-listener-per-channel shape is what makes this safe. This framework has
+# no loop guard — nothing counts bot-to-bot turns or breaks a cycle. It doesn't
+# need one here: a reply lands in a channel whose only listener is the bot that
+# wrote it, and a bot never wakes on its own messages, so an exchange runs out on
+# its own. Put two listeners in one room and nothing stops them, which is exactly
+# why there is no shared #agents channel in this design.
+#
+# Deliberately NOT set when SPZ_ROLE is spz, and that is load-bearing rather than
+# tidiness. hermes-spz relays the persona channels while the personas' own bots
+# are still coming up, and it posts those relayed answers into the same channels
+# as a bot. If SPZ also listened to bots it would answer the personas' replies
+# and re-relay them, which is the one arrangement here that could actually cycle.
+# Left at the framework default ("none") SPZ cannot see a bot message at all, so
+# the hazard is removed structurally instead of by getting a cutover order right.
+#
+# DISCORD_BOTS_REQUIRE_INLINE_MENTION is deliberately left at its false default.
+# It exists to stop reply-ping ping-pong between bots sharing a channel, which
+# the shape above already prevents; switching it on would instead oblige every
+# agent to know the others' bot *user* ids on top of their channel ids, and a
+# missing <@id> token is a silent no-answer rather than an error.
+if [ "${SPZ_ROLE}" != "spz" ] && [ -z "${DISCORD_ALLOW_BOTS}" ]; then
+  DISCORD_ALLOW_BOTS="all"
+  export DISCORD_ALLOW_BOTS
+  echo "[spz-boot] Role ${SPZ_ROLE} admits messages from other agents"
+fi
+
+# The roster a persona needs in order to *start* a conversation rather than only
+# answer one. send_message addresses Discord as discord:<channel id>, so an agent
+# that doesn't know the other channels' ids can only ever reply where it was
+# spoken to. Built from the same SPZ_CHANNEL_* variables hermes-spz already uses
+# for relaying, so channel ids keep one vocabulary across the fleet — but note
+# each persona service needs the full set, not just its own SPZ_PERSONA_CHANNEL.
+#
+# Self is excluded on purpose. An agent handed its own channel id will eventually
+# post to it, and since a bot never wakes on its own messages that message goes
+# nowhere while looking, from the agent's side, exactly like a delivered one.
+FLEET_ROSTER=""
+
+# $1 = persona key (matched against SPZ_ROLE to drop self), $2 = how the agent
+# should think of that colleague, $3 = channel id — absent id means absent line,
+# so a persona that hasn't been given the others' ids simply gets no roster and
+# behaves as it did before, rather than emitting a target that goes nowhere.
+# Nothing is added on hermes-spz at all. It cannot receive a bot message (see
+# DISCORD_ALLOW_BOTS above), so half the roster's advice would be false there,
+# and it already reaches every persona through its MCP tools — a send_message
+# path would be a second, worse route whose answer lands in a channel SPZ isn't
+# reading. Its SOUL.md also stays exactly what Railway says it is.
+add_fleet_member() {
+  [ "${SPZ_ROLE}" != "spz" ] || return 0
+  [ "$1" != "${SPZ_ROLE}" ] || return 0
+  [ -n "$3" ] || return 0
+  FLEET_ROSTER="${FLEET_ROSTER}- $2 — send_message with target discord:$3
+"
+}
+add_fleet_member trainer "The Trainer, the agent for The Gym" \
+  "${SPZ_CHANNEL_TRAINER:-${DISCORD_CHANNEL_TRAINER}}"
+add_fleet_member clinic "The Medical Team, the agent for The Clinic" \
+  "${SPZ_CHANNEL_CLINIC:-${DISCORD_CHANNEL_CLINIC}}"
+add_fleet_member manager "The Manager, the agent that runs the content-ops pipeline" \
+  "${SPZ_CHANNEL_MANAGER:-${DISCORD_CHANNEL_MANAGER}}"
+add_fleet_member clz "CLZ, the agent for Organic Ecom" \
+  "${SPZ_CHANNEL_CLZ:-${DISCORD_CHANNEL_CLZ}}"
+
+# Appended to whatever persona text Railway supplies rather than written
+# separately, because SOUL.md is the only context that survives into a
+# cron-triggered turn — channel_prompts shape one inbound message in one channel,
+# so a roster hung there would be invisible to hermes-manager's content-ops poll,
+# which is the one job most likely to need to tell another agent something.
+#
+# Concatenating into SPZ_SOUL_MD (rather than appending to the file) keeps the
+# existing single write below as the only thing that touches SOUL.md, so the file
+# is still rebuilt whole on every boot and can't accumulate a roster per restart.
+if [ -n "${FLEET_ROSTER}" ]; then
+  SPZ_SOUL_MD="${SPZ_SOUL_MD}
+
+## The rest of the fleet
+
+You are one of several agents Zach runs, each owning one Discord channel. The
+others are:
+
+${FLEET_ROSTER}
+When one of them writes in your channel, treat it as a colleague asking a
+genuine question and answer it there, in your channel, the same way you would
+answer Zach — briefly, and without repeating their message back to them. Do not
+forward what they said on to anyone else.
+
+When you need something only another agent knows, ask it directly with
+send_message rather than guessing or telling Zach to go and ask. Say who you are
+and what you need in one message; their answer appears in their channel, not
+yours, so ask only when the answer is worth Zach reading it there.
+
+Zach reads all of these channels, so talk to each other as though he is
+listening, because he is."
+fi
+
 # A persona channel is useless if every message needs an @mention first
 # (DISCORD_REQUIRE_MENTION defaults to true), so the channels wired above join
 # the free-response list automatically, along with #spz and #approvals — the
