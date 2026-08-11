@@ -417,6 +417,55 @@ if [ -n "${SPZ_CONTENT_OPS_POLL:-${CONTENT_OPS_POLL_ENABLED}}" ]; then
   fi
 fi
 
+# Per-persona proactive turn — the one thing a persona still cannot do. Each is
+# purely reactive: it answers Zach, and since the fleet roster above it answers
+# the other agents, but nothing makes it speak first. The two crons in this file
+# both belong to other services (the roundup to hermes-spz, the content-ops poll
+# to hermes-manager), so a persona container has no scheduled turn at all. This
+# gives it one, delivered to its own channel via DISCORD_HOME_CHANNEL.
+#
+# A schedule variable and a prompt variable rather than anything hardcoded here,
+# because what a proactive turn should say is entirely per-persona — a morning
+# check-in from The Trainer and a follow-up sweep from The Clinic share nothing
+# but firing on a timer. Both are required: a schedule with nothing to say would
+# post an empty turn on a timer, which is worse than staying quiet, so a lone
+# SPZ_PERSONA_CRON warns and creates nothing rather than guessing a prompt.
+#
+# Off unless Railway sets them, so landing this changes no live behaviour until a
+# service opts in — the same no-op-by-default story as SPZ_ROLE. Skipped on spz
+# entirely, which already posts the 12PM roundup into #spz and does not need a
+# second scheduled message there.
+#
+# Removed and recreated on every boot rather than created only when absent. The
+# existence checks above are right for jobs whose prompt is a literal in this
+# file, but this prompt lives in a Railway variable Zach will iterate on, and a
+# name check would pin the job to whatever the prompt said the first time it
+# booted — editing the variable would appear to work and change nothing, which
+# is precisely the silent failure this file keeps being bitten by. Rebuilding it
+# every start matches how config.yaml and SOUL.md are already handled here. The
+# cost is that the next-run clock resets on each redeploy; for a daily or hourly
+# check-in that is invisible, and it is the reason this stays opt-in rather than
+# being switched on for every persona by default.
+#
+# The name deliberately carries no role in it. The name is what remove and the
+# checks key on, so a role-derived one would strand a job on any service whose
+# SPZ_ROLE changed — the same superseded-name trap that needs explicit removal
+# lines above. One container runs exactly one persona, so a fixed name cannot
+# collide with anything and never needs migrating.
+if [ "${SPZ_ROLE}" != "spz" ] && [ -n "${SPZ_PERSONA_CRON}" ]; then
+  if [ -z "${SPZ_PERSONA_CRON_PROMPT}" ]; then
+    echo "[spz-boot] Warning: SPZ_PERSONA_CRON set without SPZ_PERSONA_CRON_PROMPT — no proactive job created"
+  else
+    hermes cron remove spz-persona-checkin >/dev/null 2>&1 || true
+    hermes cron create "${SPZ_PERSONA_CRON}" \
+      "${SPZ_PERSONA_CRON_PROMPT}" \
+      --name spz-persona-checkin \
+      --deliver "discord" \
+      && echo "[spz-boot] Role ${SPZ_ROLE} scheduled a proactive turn (${SPZ_PERSONA_CRON})" \
+      || echo "[spz-boot] Warning: failed to create spz-persona-checkin cron job"
+  fi
+fi
+
 chown -R hermes:hermes "$HERMES_HOME" 2>&1 || echo "[spz-boot] Warning: chown of $HERMES_HOME failed — continuing"
 
 exec hermes gateway run

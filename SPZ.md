@@ -140,6 +140,41 @@ Three consequences worth knowing before editing this:
   turning it on would oblige every agent to know the others' bot *user* ids on top of their channel
   ids, and a missing `<@id>` is a silent no-answer.
 
+### A persona's own proactive turn
+
+Everything above lets a persona *answer* — Zach, or another agent. Nothing makes it speak first:
+the two crons in `spz-boot.sh` belong to `hermes-spz` (the roundup) and `hermes-manager` (the
+content-ops poll), so a persona container has no scheduled turn at all. Two optional variables give
+it one, delivered to its own channel via `DISCORD_HOME_CHANNEL`:
+
+| Variable | Meaning |
+|---|---|
+| `SPZ_PERSONA_CRON` | Cron expression, e.g. `0 8 * * *`. **Europe/London**, see below. |
+| `SPZ_PERSONA_CRON_PROMPT` | What that turn should do, in plain English. |
+
+Both are required — a schedule with no prompt warns and creates nothing, rather than posting an
+empty turn on a timer. Unset on a service means no job, so landing this changed no live behaviour;
+skipped entirely on `spz`, which already posts the roundup into #spz.
+
+Two departures from the crons above, both deliberate:
+
+- **The job is removed and recreated on every boot**, not created only when absent. The name checks
+  used by the other two are right for prompts that are literals in the script, but this prompt lives
+  in a Railway variable meant to be iterated on, and a name check would pin the job to whatever it
+  said on first boot — editing the variable would look like it worked and change nothing. The cost
+  is that the next-run clock resets on each redeploy, which is invisible for a daily check-in.
+- **The job name carries no role** (`spz-persona-checkin`, not `spz-trainer-checkin`). The name is
+  what `remove` keys on, so a role-derived one would strand a job on any service whose `SPZ_ROLE`
+  changed — the superseded-name trap that needs explicit removal lines elsewhere in this file. One
+  container runs one persona, so a fixed name cannot collide.
+
+**All cron schedules run in Europe/London**, which `spz-boot.sh` hardcodes into `config.yaml`. That
+is right for the 12PM roundup and is why it survives the BST/GMT change without a seasonal nudge,
+but it is not the local time of whoever writes the schedule — `0 8 * * *` is 8AM London, which is
+mid-afternoon at UTC+8. Nothing warns about this. If a persona check-in ever needs to land at a
+local hour, make the timezone a variable rather than hand-computing an offset, which would drift by
+an hour twice a year against a zone that doesn't observe DST.
+
 ## Commands
 
 Run these from Git Bash on this Windows machine (`scripts/run_tests.sh` is POSIX sh).
