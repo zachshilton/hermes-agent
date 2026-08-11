@@ -1,10 +1,11 @@
 # SPZ
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this
+repository. It is loaded through `CLAUDE.md`, which imports it and contains nothing else.
 
 ## Read AGENTS.md first
 
-`AGENTS.md` (~1500 lines) is the canonical development guide for this codebase: contribution
+`AGENTS.md` (~1350 lines) is the canonical development guide for this codebase: contribution
 rubric, footprint ladder, plugin/skill/toolset internals, prompt-caching policy, profile rules,
 known pitfalls, and testing standards. This file is a short orientation layer on top of it —
 it does not replace it. `CONTRIBUTING.md` adds the cross-platform (Windows) rules and the
@@ -96,14 +97,48 @@ silently cost #approvals its free-typed `YES <code>`.
 A persona service needs: `SPZ_ROLE`, `SPZ_PERSONA_CHANNEL`, `SPZ_SOUL_MD`, `SPZ_MCP_URL`,
 `SPZ_MCP_TOKEN`, `ANTHROPIC_API_KEY`, `DISCORD_BOT_TOKEN` (its own bot, invited to the guild with
 read/send on its one channel), `DISCORD_ALLOWED_USERS`, `DISCORD_HOME_CHANNEL` (set to the same id as `SPZ_PERSONA_CHANNEL` — it
-is the destination for cron and proactive delivery, and is not derived), and optionally
-`HERMES_MODEL`.
+is the destination for cron and proactive delivery, and is not derived), the full set of
+`SPZ_CHANNEL_{TRAINER,CLINIC,MANAGER,CLZ}` (not just its own — see "The fleet talks to itself"
+below), and optionally `HERMES_MODEL`.
 `HERMES_HOME` is baked in by the image (`ENV HERMES_HOME=/opt/data`) and only needs a Railway
 volume mounted there. It must **not** get `SPZ_ROUNDUP_ENABLED` or `SPZ_CONTENT_OPS_POLL` —
 those stay on `hermes-spz` and `hermes-manager` respectively, per the dedicated-flag rule above.
 The roundup's deprecated `DISCORD_ALLOWED_USERS` fallback is honoured only when `SPZ_ROLE` is
 `spz`, because every persona service sets `DISCORD_ALLOWED_USERS` and would otherwise inherit a
 12PM roundup cron; the guard itself still keys on `SPZ_ROUNDUP_ENABLED`.
+
+### The fleet talks to itself, in the persona channels
+
+The personas can now start conversations with each other, not just answer Zach. Both halves of that
+are set up in `spz-boot.sh` and both are **off on `spz`**, which is load-bearing rather than tidy:
+
+- **Inbound** — `DISCORD_ALLOW_BOTS=all` (read by `gateway/authz_mixin.py`) on persona roles only,
+  so a message another agent posts in this channel is admitted.
+- **Outbound** — a roster of the other three, each as `send_message with target discord:<id>`,
+  appended to `SPZ_SOUL_MD` before `SOUL.md` is written. It goes in SOUL rather than
+  `channel_prompts` because SOUL is the only context that survives into a **cron-triggered** turn,
+  and hermes-manager's content-ops poll is the job most likely to need to tell another agent
+  something. Concatenating into the variable (not appending to the file) keeps the single existing
+  write the only thing touching `SOUL.md`, so a restart can't accumulate a roster per boot.
+
+There is deliberately **no shared `#agents` channel.** The safety argument is entirely structural:
+this framework has no loop guard, nothing counts bot-to-bot turns, and exactly one bot listens per
+channel while no bot wakes on its own messages — so an exchange runs out on its own. Two listeners
+in one room is the one arrangement nothing here stops. For the same reason `hermes-spz` stays blind
+to bot messages: it relays the persona channels and posts those answers back as a bot, so if it also
+listened to bots it would answer and re-relay its own relays.
+
+Three consequences worth knowing before editing this:
+
+- Each persona needs **all four** `SPZ_CHANNEL_*` ids, not just its own — an agent that doesn't know
+  the other channel ids can only ever reply where it was spoken to. A missing id drops that line
+  from the roster silently, which is the intended degrade (no roster beats a dead target).
+- **Self is excluded** from the roster. An agent handed its own channel id will post to it, and
+  since a bot never wakes on its own messages that send looks delivered and goes nowhere.
+- `DISCORD_BOTS_REQUIRE_INLINE_MENTION` is left at its `false` default on purpose. It guards against
+  reply ping-pong between bots sharing a channel, which one-listener-per-channel already prevents;
+  turning it on would oblige every agent to know the others' bot *user* ids on top of their channel
+  ids, and a missing `<@id>` is a silent no-answer.
 
 ## Commands
 
@@ -131,6 +166,39 @@ cd ui-tui && npm run dev           # TUI watch mode; also build / lint / fmt / t
 ./hermes --help                    # local CLI launcher (same entry as installed `hermes`)
 python run_agent.py --help
 ```
+
+### Verifying a `spz-boot.sh` change — nothing else does
+
+Note what the suite above does *not* cover: `scripts/run_tests.sh` tests upstream Python, and this
+fork has never written any. **`docker/spz-boot.sh` has no test, no CI job, and no shell lint** —
+grep the workflows and you'll find it referenced nowhere. Its first real run is a Railway container
+boot, so verify it by hand before pushing, the way the commit history describes: a temp
+`HERMES_HOME` and a stubbed `hermes` earlier on `PATH`.
+
+Put a stub `hermes` (log `$*`, `exit 0`) and a stub `chown` (`exit 0`, since there's no `hermes`
+user locally) in a temp dir, then run the script with that dir prepended to `PATH` and `HERMES_HOME`
+pointed at an empty temp dir. The final `exec hermes gateway run` lands on the stub, so the script
+exits cleanly and leaves the two generated files behind to inspect. Check all four:
+
+- **Both role paths.** `SPZ_ROLE=<persona>` and the default `spz` take different branches almost
+  everywhere. A persona emits the fleet roster into `SOUL.md` and logs "admits messages from other
+  agents"; `spz` emits neither and instead derives the free-response list.
+- **Self-exclusion.** A persona's roster must contain the other three channel ids and *not* its own.
+- **Quoted channel ids.** `grep '"' config.yaml` — the `channel_prompts` keys must come out as
+  `"111"`, not `111`. Unquoted they parse as ints and every lookup misses silently.
+- **Idempotency.** Run it twice against the same `HERMES_HOME` and diff `config.yaml`; it must be
+  byte-identical, and the second run must not create a duplicate cron job.
+
+Keep it **POSIX sh**. The shebang is `#!/bin/sh` and `railway.json` invokes it as
+`sh /opt/hermes/docker/spz-boot.sh`, so bashisms — `[[ ]]`, arrays, `local`, `+=` — break it in the
+container while working fine in Git Bash, where you'd be testing. `set -e` is on, which is why every
+tolerated failure (`hermes cron remove`, the `chown`) is explicitly suffixed `|| true` or `|| echo`.
+
+### Commit messages
+
+Fork commits carry long prose bodies (14–44 lines) explaining *why*, including the counterfactual —
+what breaks if it were done the other way, and what already broke once. Match that; the reasoning
+behind these decisions lives in the log, not in the one-line shell diff it usually accompanies.
 
 Ruff has **all rules intentionally disabled except `PLW1514`** (unspecified-encoding). Bare
 `open()`/`read_text()`/`write_text()` in text mode defaults to cp1252 on Windows and silently
