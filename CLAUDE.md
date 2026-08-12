@@ -16,7 +16,7 @@ only place the fork's own conventions are written down.
 
 | File | Owner | Covers |
 |---|---|---|
-| `SPZ.md` | this fork | What SPZ is, the three files every fork commit touches, the `SPZ_`-vs-framework naming rule, per-persona containers, commands, and the invariants that have actually broken here |
+| `SPZ.md` | this fork | What SPZ is, the files every fork commit touches, the generated `config.yaml`, the `SPZ_`-vs-framework naming rule, per-persona containers, commands, and the invariants that have actually broken here |
 | `AGENTS.md` (~1350 lines) | upstream | The canonical development guide: contribution rubric, footprint ladder, plugin/skill/toolset internals, prompt-caching policy, profile rules, testing standards |
 | `CONTRIBUTING.md` | upstream | Cross-platform (Windows) rules and the skill-vs-tool decision guide |
 

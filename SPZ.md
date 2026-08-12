@@ -18,14 +18,27 @@ NousResearch/Hermes-Agent), deployed on Railway as the `hermes-spz` and `hermes-
 (see "One container per persona" below);
 the dashboard and MCP server it talks to (`api/mcp.ts`, `api/discord-inbound.ts`) live in a separate
 SPZ repo. Refer to the project as SPZ, not Hermes — "Hermes" means the vendored upstream framework.
-Every commit unique to this fork touches exactly three files:
+Every commit unique to this fork touches the same small set of files, and in practice only the
+first two are still moving:
 
 - `docker/spz-boot.sh` — Railway start command (`railway.json` → `sh /opt/hermes/docker/spz-boot.sh`).
   Regenerates `$HERMES_HOME/config.yaml` and `SOUL.md` from Railway env vars on **every** container
   start (idempotent by design, always overwrites), creates cron jobs idempotently by name, then
-  `exec hermes gateway run`.
-- `docker/stage2-hook.sh` — s6-overlay UID remap / `HERMES_HOME` ownership.
-- `railway.json`.
+  `exec hermes gateway run`. Every behavioural fork commit is a diff to this file.
+- `SPZ.md` (and `CLAUDE.md`, which only imports it) — the fork's own guidance. Four of the last six
+  commits touch it, because the reasoning behind a `spz-boot.sh` change does not fit in the shell
+  diff. Treat a behaviour change here as incomplete until this file describes it.
+- `docker/stage2-hook.sh` — s6-overlay UID remap / `HERMES_HOME` ownership. Settled; last touched
+  July 2026, and superseded in practice because Railway's custom start command runs `spz-boot.sh`
+  directly as root and bypasses the s6 entrypoint entirely (which is why `spz-boot.sh` does its own
+  `chown` at the end).
+- `railway.json` — three lines, unchanged since the gateway invocation was first wired up.
+
+The generated `config.yaml` is the whole fork surface at runtime. It contains exactly five things:
+`timezone` (hardcoded `Europe/London`), `model` (`${HERMES_MODEL}`, defaulting to
+`anthropic/claude-sonnet-5`), a `display.platforms.discord` block, the single `mcp_servers.spz`
+entry built from `SPZ_MCP_URL`/`SPZ_MCP_TOKEN` with `timeout: 180`, and — only when at least one
+relay channel id is set — `platforms.discord.extra.channel_prompts`.
 
 **No Python has ever been written in this fork.** The working convention, stated explicitly in the
 commit messages, is to reach for existing framework config before customizing core. Examples: the
@@ -53,10 +66,19 @@ silently — nothing errors, the adapter just never sees the value:
 | `HERMES_HOME` | core, everywhere |
 
 Check for a consumer before renaming anything else. Each `SPZ_` name currently falls back to its
-pre-rename name (`${SPZ_ROUNDUP_ENABLED:-${DISCORD_ALLOWED_USERS}}`), so boots survive a redeploy
-that lands before the Railway variables are updated — drop the fallbacks once Railway is renamed.
+pre-rename name, so boots survive a redeploy that lands before the Railway variables are updated —
+drop the fallbacks once Railway is renamed. The pairs are not all guessable, so before deleting an
+old Railway variable check which new name still reads it:
 
-Three conventions in `spz-boot.sh`, each of which has caused a silent failure:
+| `SPZ_` name | Falls back to |
+|---|---|
+| `SPZ_ROUNDUP_ENABLED` | `DISCORD_ALLOWED_USERS` (honoured only when `SPZ_ROLE` is `spz`) |
+| `SPZ_CONTENT_OPS_POLL` | `CONTENT_OPS_POLL_ENABLED` |
+| `SPZ_CHANNEL_{TRAINER,CLINIC,MANAGER,CLZ}` | `DISCORD_CHANNEL_{TRAINER,CLINIC,MANAGER,CLZ}` |
+| `SPZ_CHANNEL_HOME` | `DISCORD_CHANNEL_SPZ` — **not** `DISCORD_CHANNEL_HOME` |
+| `SPZ_CHANNEL_APPROVALS` | `DISCORD_CHANNEL_APPROVALS` |
+
+Four conventions in `spz-boot.sh`, each of which has caused a silent failure:
 
 - **Instances are scoped by which env var Railway sets**, not a service-name check:
   `SPZ_ROUNDUP_ENABLED` ⇒ `hermes-spz`; `SPZ_CONTENT_OPS_POLL` ⇒ `hermes-manager`. These are now
@@ -66,8 +88,27 @@ Three conventions in `spz-boot.sh`, each of which has caused a silent failure:
 - **Renaming a cron job needs a removal line.** The existence check only asks whether the *current*
   name is present, so a superseded job keeps running on its old schedule forever. `spz-boot.sh`
   removes `daily-roundup`, `daily-roundup-discord` and `content-ops-poll` on every boot.
-- **Discord channel ids must stay quoted** in the emitted YAML. Unquoted they parse as ints and
-  every `channel_prompts` lookup (which keys on the adapter's string id) misses.
+- **Anything YAML 1.1 would coerce must stay quoted** in the emitted config, because it is read with
+  `yaml.safe_load`. Two live instances, both of which failed silently: Discord channel ids unquoted
+  parse as ints, and every `channel_prompts` lookup (which keys on the adapter's string id) misses;
+  and `tool_progress: off` unquoted is the boolean `False`, while the resolver compares against the
+  string `"off"` — so the setting reads as valid and does nothing. Assume the next scalar you add is
+  a third one.
+
+### The Discord display block, and why it is per-platform
+
+`spz-boot.sh` emits four `display.platforms.discord` settings — `tool_progress: "off"`,
+`interim_assistant_messages: false`, `long_running_notifications: false`, `busy_ack_detail: false`.
+Discord is the framework's most verbose display tier by default (`_TIER_HIGH` in
+`gateway/display_config.py`), and with no display block the persona channels narrated the relay they
+exist to hide: a `⚙️ mcp__spz__instruct_trainer` bubble, any preamble SPZ emitted alongside the tool
+call as its own message, a `⏳ Working` heartbeat, none of it cleaned up. These four leave the
+channel showing the question and the answer.
+
+Display settings resolve on the **platform** key alone — `ChannelOverride` carries only
+model/provider/system_prompt, so there is no per-channel layer to hang them on. That means this
+quietens `#spz` too, which is accepted rather than desired. Don't try to scope it per channel
+without first adding that layer upstream.
 
 ### One container per persona
 
@@ -219,8 +260,9 @@ exits cleanly and leaves the two generated files behind to inspect. Check all fo
   everywhere. A persona emits the fleet roster into `SOUL.md` and logs "admits messages from other
   agents"; `spz` emits neither and instead derives the free-response list.
 - **Self-exclusion.** A persona's roster must contain the other three channel ids and *not* its own.
-- **Quoted channel ids.** `grep '"' config.yaml` — the `channel_prompts` keys must come out as
-  `"111"`, not `111`. Unquoted they parse as ints and every lookup misses silently.
+- **Quoted scalars.** `grep '"' config.yaml` — the `channel_prompts` keys must come out as `"111"`,
+  not `111`, and `tool_progress` as `"off"`, not `off`. Unquoted, the ids parse as ints and every
+  lookup misses; unquoted, `off` parses as `False` and the display setting is ignored. Both silent.
 - **Idempotency.** Run it twice against the same `HERMES_HOME` and diff `config.yaml`; it must be
   byte-identical, and the second run must not create a duplicate cron job.
 
