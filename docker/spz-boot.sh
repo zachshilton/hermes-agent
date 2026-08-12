@@ -403,18 +403,48 @@ fi
 # are already registered ungated for the manager agent in api/mcp.ts, and
 # scan_video alone now resolves sponsorship + drafts every platform's
 # caption server-side, so this is genuinely just two tool calls per video.
+# How often the poll runs. A variable rather than a literal because the right
+# interval is a cost/latency judgement that will be revisited — the framework
+# convention here is to reach for config before code, and this way the next
+# adjustment is a Railway edit rather than a commit.
+#
+# The default is hourly, down from the */30 it ran at for its first months. A
+# firing is not one API call: every one starts a fresh conversation, so the
+# system prompt, SOUL.md, the Hermes core toolset and the manager's ~19 MCP tool
+# schemas are re-sent uncached on every round trip inside it, and the prompt
+# below loops approve_video + scan_video over every pending video. That cost is
+# paid 48 times a day at */30 even when the queue is empty. Hourly halves the
+# floor; the pipeline is unattended, so nothing downstream notices the latency.
+SPZ_CONTENT_OPS_CRON="${SPZ_CONTENT_OPS_CRON:-0 * * * *}"
+
 if [ -n "${SPZ_CONTENT_OPS_POLL:-${CONTENT_OPS_POLL_ENABLED}}" ]; then
   # Same migration reasoning as the roundup job — the pre-SPZ-naming job would
   # otherwise keep polling every 30 minutes alongside its replacement, doubling
   # every approve_video/scan_video call on the dashboard side.
   hermes cron remove content-ops-poll >/dev/null 2>&1 || true
 
-  if ! hermes cron list --all 2>&1 | grep -q "Name:      spz-content-ops-poll"; then
-    hermes cron create "*/30 * * * *" \
-      "Call get_pending_videos for faiz, arif, and taha. For each video returned, call approve_video with its details, then scan_video with its drive link — that single follow-up call transcribes it, checks sponsor/topic alignment, resolves sponsorship, and drafts captions for every platform in its category automatically. Do this for every pending video found, without asking me first. If a video errors, skip it and continue with the rest." \
-      --name spz-content-ops-poll \
-      || echo "[spz-boot] Warning: failed to create spz-content-ops-poll cron job"
-  fi
+  # Removed and recreated on every boot rather than created only when absent,
+  # the same departure spz-persona-checkin below already makes and for the same
+  # reason. The name check this replaces only ever asked whether the job EXISTS,
+  # never whether it still matches what this file says — so its schedule was
+  # pinned to whatever it read on the first boot of that container. Editing the
+  # interval here would have looked like it worked and changed nothing on any
+  # already-running service, which is the silent failure this file keeps being
+  # bitten by, and is precisely why a 30-minute poll outlived the decision to
+  # widen it. Now that the schedule is a Railway variable the recreate is not
+  # optional: a name check would make SPZ_CONTENT_OPS_CRON inert on every
+  # service that has already booted once, which is all of them.
+  #
+  # Unlike the persona check-in, nothing is lost by rebuilding it. That job's
+  # note about the next-run clock resetting on each redeploy applies to interval
+  # schedules; these are absolute cron expressions, so the next run is the next
+  # top of the hour no matter when the container last started.
+  hermes cron remove spz-content-ops-poll >/dev/null 2>&1 || true
+  hermes cron create "${SPZ_CONTENT_OPS_CRON}" \
+    "Call get_pending_videos for faiz, arif, and taha. For each video returned, call approve_video with its details, then scan_video with its drive link — that single follow-up call transcribes it, checks sponsor/topic alignment, resolves sponsorship, and drafts captions for every platform in its category automatically. Do this for every pending video found, without asking me first. If a video errors, skip it and continue with the rest." \
+    --name spz-content-ops-poll \
+    && echo "[spz-boot] Content-ops poll scheduled (${SPZ_CONTENT_OPS_CRON})" \
+    || echo "[spz-boot] Warning: failed to create spz-content-ops-poll cron job"
 fi
 
 # Per-persona proactive turn — the one thing a persona still cannot do. Each is
