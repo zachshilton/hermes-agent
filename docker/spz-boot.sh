@@ -368,6 +368,101 @@ else
   PLATFORMS_BLOCK=""
 fi
 
+# Which native toolsets each surface loads — the largest cost lever in this file.
+#
+# With no platform_toolsets key at all, _get_platform_tools
+# (hermes_cli/tools_config.py) falls back to the platform default: hermes-discord
+# for an adapter turn, hermes-cron for a scheduled one. Both resolve to a 51-tool
+# bundle, of which 16 survive their check_fn gates on a machine with no API keys
+# and serialize to ~9.8k tokens of JSON schema — more on Railway, where the keys
+# that gate the browser, web, image and vision tools are actually present. That
+# block is re-sent on EVERY API call, and this fleet opens almost none of it:
+# there is no repo on the container to read or patch, no browser, nothing to
+# shell out to, and the kanban and Home Assistant tools address a dashboard this
+# agent already reaches over MCP.
+#
+# The MCP spz tools are NOT at risk here. _get_platform_tools unions every
+# globally-enabled MCP server back in unless the list names one explicitly or
+# carries the no_mcp sentinel, so scoping the native side leaves the entire
+# dashboard surface intact — which is the only surface these agents ever use.
+# That is what makes this safe to do from config, and it is why the narrow lists
+# below can afford to be as short as they are.
+#
+# Two lists, because the two surfaces genuinely differ. A Discord turn is a
+# conversation with Zach and wants memory, history and skills; a cron turn is an
+# unattended pipeline whose every real action is an MCP call. The literal "full"
+# on either restores that platform's framework default — the way back without a
+# code change, if an agent turns out to need something cut here.
+SPZ_TOOLSETS="${SPZ_TOOLSETS:-discord,clarify,memory,session_search,todo,skills}"
+SPZ_CRON_TOOLSETS="${SPZ_CRON_TOOLSETS:-clarify,memory,todo}"
+
+# $1 = comma-separated toolset names -> a YAML sequence indented under a platform
+# key. Names are emitted unquoted on purpose: these are bare lowercase
+# identifiers, none of which YAML 1.1 coerces. Do not extend this to values that
+# could — the quoting trap that has already bitten channel ids and tool_progress
+# twice applies to anything else that ends up in this file.
+emit_toolset_list() {
+  _emit_old_ifs="$IFS"
+  IFS=','
+  for _ts in $1; do
+    if [ -n "${_ts}" ]; then
+      printf '    - %s\n' "${_ts}"
+    fi
+  done
+  IFS="${_emit_old_ifs}"
+}
+
+TOOLSETS_BODY=""
+if [ "${SPZ_TOOLSETS}" != "full" ]; then
+  # cronjob rides along only on hermes-manager, scoped by the same dedicated flag
+  # that scopes the poll itself rather than by a service-name check. It is the one
+  # service where "change how often you poll" is a real thing to ask an agent,
+  # because it is the only one that owns a schedule worth changing.
+  SPZ_DISCORD_TOOLSETS="${SPZ_TOOLSETS}"
+  if [ -n "${SPZ_CONTENT_OPS_POLL:-${CONTENT_OPS_POLL_ENABLED}}" ]; then
+    SPZ_DISCORD_TOOLSETS="${SPZ_DISCORD_TOOLSETS},cronjob"
+  fi
+  # A value that names no toolsets at all (a stray comma, a half-finished Railway
+  # edit) must not reach the file. Emitting a bare `discord:` gives it a null
+  # value, and _get_platform_tools treats a non-list as unconfigured and hands
+  # back the full bundle — so the saving quietly disappears while the boot log
+  # still says the toolsets were scoped. Fail open the same way, but say so.
+  DISCORD_TOOLSETS_YAML="$(emit_toolset_list "${SPZ_DISCORD_TOOLSETS}")"
+  if [ -n "${DISCORD_TOOLSETS_YAML}" ]; then
+    TOOLSETS_BODY="  discord:
+${DISCORD_TOOLSETS_YAML}"
+  else
+    echo "[spz-boot] Warning: SPZ_TOOLSETS names no toolsets (${SPZ_TOOLSETS}); leaving discord on the framework default"
+  fi
+fi
+if [ "${SPZ_CRON_TOOLSETS}" != "full" ]; then
+  # cron is its own platform key with its own default (hermes-cron), so narrowing
+  # discord alone would leave every scheduled turn — including the hourly
+  # content-ops poll, the most frequent recurring cost on this fleet — still
+  # paying for the full bundle.
+  CRON_TOOLSETS_LIST="$(emit_toolset_list "${SPZ_CRON_TOOLSETS}")"
+  if [ -z "${CRON_TOOLSETS_LIST}" ]; then
+    echo "[spz-boot] Warning: SPZ_CRON_TOOLSETS names no toolsets (${SPZ_CRON_TOOLSETS}); leaving cron on the framework default"
+  else
+    CRON_TOOLSETS_YAML="  cron:
+${CRON_TOOLSETS_LIST}"
+    if [ -n "${TOOLSETS_BODY}" ]; then
+      TOOLSETS_BODY="${TOOLSETS_BODY}
+${CRON_TOOLSETS_YAML}"
+    else
+      TOOLSETS_BODY="${CRON_TOOLSETS_YAML}"
+    fi
+  fi
+fi
+if [ -n "${TOOLSETS_BODY}" ]; then
+  TOOLSETS_BLOCK="platform_toolsets:
+${TOOLSETS_BODY}
+"
+  echo "[spz-boot] Toolsets scoped (discord=${SPZ_DISCORD_TOOLSETS:-full}, cron=${SPZ_CRON_TOOLSETS})"
+else
+  TOOLSETS_BLOCK=""
+fi
+
 # Discord is the framework's most verbose display tier by default
 # (gateway/display_config.py's _TIER_HIGH), and this config previously set no
 # display block at all — so every persona channel was narrating the relay it
@@ -404,7 +499,7 @@ mcp_servers:
     headers:
       Authorization: "Bearer ${SPZ_MCP_TOKEN}"
     timeout: 180
-${VOICE_BLOCK}${PLATFORMS_BLOCK}
+${VOICE_BLOCK}${TOOLSETS_BLOCK}${PLATFORMS_BLOCK}
 EOF
 
 if [ -n "${SPZ_SOUL_MD}" ]; then

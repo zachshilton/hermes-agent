@@ -34,11 +34,13 @@ first two are still moving:
   `chown` at the end).
 - `railway.json` — three lines, unchanged since the gateway invocation was first wired up.
 
-The generated `config.yaml` is the whole fork surface at runtime. It contains exactly five things:
+The generated `config.yaml` is the whole fork surface at runtime. It contains exactly six things:
 `timezone` (hardcoded `Europe/London`), `model` (`${HERMES_MODEL}`, defaulting to
 `anthropic/claude-sonnet-5`), a `display.platforms.discord` block, the single `mcp_servers.spz`
-entry built from `SPZ_MCP_URL`/`SPZ_MCP_TOKEN` with `timeout: 180`, and — only when at least one
-relay channel id is set — `platforms.discord.extra.channel_prompts`.
+entry built from `SPZ_MCP_URL`/`SPZ_MCP_TOKEN` with `timeout: 180`, a `platform_toolsets` block
+scoping what each surface loads, and — only when at least one relay channel id is set —
+`platforms.discord.extra.channel_prompts`. An `stt`/`tts` pair appears as a seventh only when a
+voice key is present.
 
 **No Python has ever been written in this fork.** The working convention, stated explicitly in the
 commit messages, is to reach for existing framework config before customizing core. Examples: the
@@ -50,8 +52,9 @@ change can be made in generated `config.yaml` or env vars, do it there.
 ### Naming: `SPZ_` is for us, `DISCORD_*`/`HERMES_*` belong to the framework
 
 Every variable `spz-boot.sh` alone consumes carries an `SPZ_` prefix: `SPZ_MCP_URL`,
-`SPZ_MCP_TOKEN`, `SPZ_SOUL_MD`, `SPZ_CHANNEL_{TRAINER,CLINIC,MANAGER,CLZ,CONTENT,HOME,APPROVALS}`,
-`SPZ_ROUNDUP_ENABLED`, `SPZ_CONTENT_OPS_POLL`, `SPZ_ROLE`, `SPZ_PERSONA_CHANNEL`,
+`SPZ_MCP_TOKEN`, `SPZ_SOUL_MD`, `SPZ_CHANNEL_{TRAINER,CLINIC,MANAGER,CLZ,HOME,APPROVALS}`,
+`SPZ_ROUNDUP_ENABLED`, `SPZ_CONTENT_OPS_POLL`, `SPZ_CONTENT_OPS_CRON`, `SPZ_ROLE`,
+`SPZ_PERSONA_CHANNEL`,
 `SPZ_RELAY_CHANNELS`, `SPZ_STT_PROVIDER`, `SPZ_TTS_PROVIDER`, `SPZ_TTS_VOICE`, `SPZ_TTS_MODEL`.
 Cron jobs follow suit: `spz-daily-roundup`, `spz-content-ops-poll`.
 
@@ -110,6 +113,53 @@ Display settings resolve on the **platform** key alone — `ChannelOverride` car
 model/provider/system_prompt, so there is no per-channel layer to hang them on. That means this
 quietens `#spz` too, which is accepted rather than desired. Don't try to scope it per channel
 without first adding that layer upstream.
+
+### Scoping the toolsets, and why it is the biggest cost lever here
+
+Claude spend is a standing constraint on this deployment, and the largest thing driving it was not
+the model or the cron frequency — it was the tool schema block re-sent on **every** API call.
+
+With no `platform_toolsets` key, `_get_platform_tools` (`hermes_cli/tools_config.py`) falls back to
+the platform default: `hermes-discord` for an adapter turn, `hermes-cron` for a scheduled one. Both
+resolve to a 51-tool bundle that serialises to **~9.8k tokens** measured on a machine with no API
+keys, and more on Railway where the keys gating the browser, web, image and vision tools are
+present. This fleet opens almost none of it — there is no repo on the container to read or patch,
+no browser, nothing to shell out to, and the kanban tools address a dashboard the agent already
+reaches over MCP. So `spz-boot.sh` emits two narrow lists:
+
+| Variable | Default | Resolves to |
+|---|---|---|
+| `SPZ_TOOLSETS` | `discord,clarify,memory,session_search,todo,skills` | 7 tools, ~4.4k tokens (was ~9.8k) |
+| `SPZ_CRON_TOOLSETS` | `clarify,memory,todo` | 3 tools, ~1.5k tokens (was ~9.8k) |
+
+`cronjob` is appended to the Discord list only where `SPZ_CONTENT_OPS_POLL` is set — hermes-manager
+is the one service that owns a schedule worth asking an agent to change. The literal `full` on
+either variable omits that key entirely and restores the framework default; that is the way back
+without a code change if an agent turns out to need something cut here.
+
+Three things that make this safe, each of which would otherwise look like a bug:
+
+- **MCP tools are never at risk.** `_get_platform_tools` unions every globally-enabled MCP server
+  back in unless the list names one explicitly or carries the `no_mcp` sentinel. Scoping the native
+  side leaves the whole `spz` dashboard surface intact — which is the only surface these agents
+  actually use, and the reason the lists can afford to be this short.
+- **`cron` is its own platform key** with its own default. Narrowing `discord` alone would leave
+  every scheduled turn — including the hourly content-ops poll, the most frequent recurring cost on
+  this fleet — still paying for the full bundle. That one is the bigger saving of the two.
+- **`kanban` still appears** in the resolved list and is *not* a mistake. It is not in
+  `CONFIGURABLE_TOOLSETS`, so `platform_toolsets` cannot exclude it; it is gated by a `check_fn`
+  (`_check_kanban_mode`) instead, which fails here, so it contributes no schema. Don't try to remove
+  it from the list — it was never read from there.
+
+Two related levers deliberately **not** taken. `prompt_caching.cache_ttl: 1h` is available and
+tempting, since every cron firing starts a fresh conversation and the default `5m` is always cold by
+then — but the 1h tier costs 2× on write against 1.25×, and an hourly poll sits exactly on the
+boundary, so it could cost more rather than less. And a per-cron model override is simply not
+reachable from here: `hermes cron create` has no `--model` flag (it is absent from both
+`hermes_cli/subcommands/cron.py` and `cron_create`'s argument pass-through), and only the agent's
+own `cronjob` tool can write one. The lever that does exist is `HERMES_MODEL` per Railway service,
+which crons honour — but it is service-wide, so a cheap model on `hermes-spz` also makes the
+interactive `#spz` agent cheap.
 
 ### One container per persona
 
@@ -198,13 +248,16 @@ Both are required — a schedule with no prompt warns and creates nothing, rathe
 empty turn on a timer. Unset on a service means no job, so landing this changed no live behaviour;
 skipped entirely on `spz`, which already posts the roundup into #spz.
 
-Two departures from the crons above, both deliberate:
+Two departures from the roundup cron, both deliberate:
 
-- **The job is removed and recreated on every boot**, not created only when absent. The name checks
-  used by the other two are right for prompts that are literals in the script, but this prompt lives
-  in a Railway variable meant to be iterated on, and a name check would pin the job to whatever it
-  said on first boot — editing the variable would look like it worked and change nothing. The cost
-  is that the next-run clock resets on each redeploy, which is invisible for a daily check-in.
+- **The job is removed and recreated on every boot**, not created only when absent. The rule is:
+  a job whose schedule or prompt comes from a Railway variable must be recreated every boot; only
+  a job whose schedule *and* prompt are literals in the script may be name-checked. A name check
+  would pin the job to whatever the variable said on first boot — editing it would look like it
+  worked and change nothing. The cost is that the next-run clock resets on each redeploy, which is
+  invisible for a daily check-in. `spz-content-ops-poll` follows the same rule since `79d6a69` gave
+  it `SPZ_CONTENT_OPS_CRON` (default `0 * * * *`, widened from `*/30`); `spz-daily-roundup` is now
+  the only job still created behind a name check, because its `0 12 * * *` is a literal.
 - **The job name carries no role** (`spz-persona-checkin`, not `spz-trainer-checkin`). The name is
   what `remove` keys on, so a role-derived one would strand a job on any service whose `SPZ_ROLE`
   changed — the superseded-name trap that needs explicit removal lines elsewhere in this file. One
@@ -308,15 +361,18 @@ python run_agent.py --help
 ### Verifying a `spz-boot.sh` change — nothing else does
 
 Note what the suite above does *not* cover: `scripts/run_tests.sh` tests upstream Python, and this
-fork has never written any. **`docker/spz-boot.sh` has no test, no CI job, and no shell lint** —
-grep the workflows and you'll find it referenced nowhere. Its first real run is a Railway container
-boot, so verify it by hand before pushing, the way the commit history describes: a temp
-`HERMES_HOME` and a stubbed `hermes` earlier on `PATH`.
+fork has never written any. **`docker/spz-boot.sh` has no behavioural test.** The one automated
+check it does get is shellcheck at `--severity=error` — `.github/workflows/docker-lint.yml` runs it
+over `scandir: ./docker`, gated by `ci.yml` on the `docker_meta` change class, which
+`scripts/ci/classify_changes.py` defines as the `docker/` prefix. That catches unquoted variables
+and syntax errors, not one line of what the script actually *does*. Its first real run of that is a
+Railway container boot, so verify it by hand before pushing, the way the commit history describes:
+a temp `HERMES_HOME` and a stubbed `hermes` earlier on `PATH`.
 
 Put a stub `hermes` (log `$*`, `exit 0`) and a stub `chown` (`exit 0`, since there's no `hermes`
 user locally) in a temp dir, then run the script with that dir prepended to `PATH` and `HERMES_HOME`
 pointed at an empty temp dir. The final `exec hermes gateway run` lands on the stub, so the script
-exits cleanly and leaves the two generated files behind to inspect. Check all four:
+exits cleanly and leaves the two generated files behind to inspect. Check all five:
 
 - **Both role paths.** `SPZ_ROLE=<persona>` and the default `spz` take different branches almost
   everywhere. A persona emits the fleet roster into `SOUL.md` and logs "admits messages from other
@@ -325,8 +381,19 @@ exits cleanly and leaves the two generated files behind to inspect. Check all fo
 - **Quoted scalars.** `grep '"' config.yaml` — the `channel_prompts` keys must come out as `"111"`,
   not `111`, and `tool_progress` as `"off"`, not `off`. Unquoted, the ids parse as ints and every
   lookup misses; unquoted, `off` parses as `False` and the display setting is ignored. Both silent.
+- **The toolsets block.** `platform_toolsets` must carry both a `discord` and a `cron` key. `cron`
+  is a separate platform key with its own default, so a run that narrows `discord` alone leaves
+  every scheduled turn still paying for the full bundle — the bigger of the two savings, lost with
+  nothing in the config looking wrong. `cronjob` must appear in the `discord` list only where
+  `SPZ_CONTENT_OPS_POLL` is set, or every persona carries a schema for a schedule it does not own.
+  And `SPZ_TOOLSETS=full SPZ_CRON_TOOLSETS=full` must leave the key out of the file altogether: an
+  emitted key whose list is empty resolves to a platform with no native tools at all, the opposite
+  of what `full` promises, so the way back has to be checked as an absence rather than assumed.
 - **Idempotency.** Run it twice against the same `HERMES_HOME` and diff `config.yaml`; it must be
-  byte-identical, and the second run must not create a duplicate cron job.
+  byte-identical, and the second run must not create a duplicate cron job. Note that "no duplicate"
+  is not "no churn": `spz-content-ops-poll` and `spz-persona-checkin` deliberately remove and
+  recreate themselves on every boot (see the rule above), so expect a remove+create pair for each
+  in the stub log — one job at the end is the check, not one create.
 
 Keep it **POSIX sh**. The shebang is `#!/bin/sh` and `railway.json` invokes it as
 `sh /opt/hermes/docker/spz-boot.sh`, so bashisms — `[[ ]]`, arrays, `local`, `+=` — break it in the
