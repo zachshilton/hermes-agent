@@ -417,8 +417,18 @@ is posted as `**[Voice]** @zach: …`, and SPZ's answer is posted as text *and* 
 |---|---|---|---|
 | `SPZ_VOICE_ECHO_TRANSCRIPT` | `true` | `voice.echo_transcript` | Zach's speech stops appearing in the text channel |
 | `SPZ_VOICE_SUPPRESS_TEXT` | `false` | `voice.suppress_text_reply` | SPZ's answer is spoken but not posted |
+| `SPZ_VOICE_STARTUP_NOTE` | `false` | `voice.startup_voice_note` | The "gateway online" notice is also sent as a spoken voice note |
 
-**This is the fork's one Python change**, in `gateway/run.py`: a `_voice_chat_visibility` helper plus
+Turning `SPZ_VOICE_STARTUP_NOTE` on makes every redeploy post the "gateway online" notice as a
+voice note as well as text. It exists because tuning a voice is a listen-adjust-redeploy loop and
+the voice-channel connection does **not** survive a restart — `_voice_clients` is an in-memory dict
+with nothing restoring it at boot, so hearing a change otherwise means sitting in a voice channel
+and running `/voice join` after every single deploy. The note is a plain audio attachment, so it
+needs no voice connection at all. It is strictly additive: the text notice is sent and counted
+before the audio is attempted, so a TTS provider that is slow, unconfigured or broken can never stop
+the gateway coming up.
+
+**This is one of the fork's Python changes**, in `gateway/run.py`: a `_voice_chat_visibility` helper plus
 two call sites. It was necessary because neither behaviour had a config path — the transcript post
 was unconditional, and the reply text is the agent's only output channel. There is no
 agent-callable `send_message` (withheld on purpose, `toolsets.py:373`) and the `discord` tool stops

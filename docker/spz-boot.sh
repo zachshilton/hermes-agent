@@ -393,6 +393,16 @@ fi
 SPZ_VOICE_ECHO_TRANSCRIPT="${SPZ_VOICE_ECHO_TRANSCRIPT:-true}"
 SPZ_VOICE_SUPPRESS_TEXT="${SPZ_VOICE_SUPPRESS_TEXT:-false}"
 
+# Speak the "gateway online" notice as a voice note as well as posting it, so a
+# redeploy demonstrates what the configured voice sounds like. Tuning a voice is
+# a listen-adjust-redeploy loop and the voice-channel connection does not survive
+# a restart — without this, hearing the result means sitting in a voice channel
+# and running /voice join after every single deploy.
+#
+# Off by default, and additive when on: the text notice is sent and counted
+# before the audio is attempted, so every failure here leaves startup as it was.
+SPZ_VOICE_STARTUP_NOTE="${SPZ_VOICE_STARTUP_NOTE:-false}"
+
 # These two are emitted UNQUOTED, which is the exact inverse of the rule the
 # rest of this file follows — and for the same underlying reason. They have to
 # reach Python as YAML booleans, because the reader takes bool() of whatever it
@@ -415,6 +425,7 @@ normalize_bool() {
 }
 SPZ_VOICE_ECHO_TRANSCRIPT="$(normalize_bool "${SPZ_VOICE_ECHO_TRANSCRIPT}" true SPZ_VOICE_ECHO_TRANSCRIPT)"
 SPZ_VOICE_SUPPRESS_TEXT="$(normalize_bool "${SPZ_VOICE_SUPPRESS_TEXT}" false SPZ_VOICE_SUPPRESS_TEXT)"
+SPZ_VOICE_STARTUP_NOTE="$(normalize_bool "${SPZ_VOICE_STARTUP_NOTE}" false SPZ_VOICE_STARTUP_NOTE)"
 
 # ElevenLabs. The OpenAI voices read as synthetic and are slow enough to be felt
 # in a spoken exchange, so this is the realism/latency option — its SDK is baked
@@ -524,6 +535,7 @@ ${TTS_EXTRA}"
   VOICE_BLOCK="${VOICE_BLOCK}voice:
   echo_transcript: ${SPZ_VOICE_ECHO_TRANSCRIPT}
   suppress_text_reply: ${SPZ_VOICE_SUPPRESS_TEXT}
+  startup_voice_note: ${SPZ_VOICE_STARTUP_NOTE}
 "
   if [ -n "${VOICE_STT_OK}" ]; then
     STT_DESC="${SPZ_STT_PROVIDER}"

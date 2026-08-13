@@ -14887,6 +14887,45 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     platform.value,
                     home.chat_id,
                 )
+
+                # Optionally speak the same line as a voice note, so a redeploy
+                # demonstrates what the configured voice actually sounds like
+                # without anyone having to sit in a voice channel and run
+                # /voice join. Tuning a voice is a listen-adjust-redeploy loop,
+                # and the voice-channel connection does not survive a restart —
+                # this closes that loop.
+                #
+                # Deliberately additive: the text notification has already been
+                # sent and counted above, so every failure path here leaves
+                # startup exactly as it was. A gateway must never fail to come
+                # up because a TTS provider was slow, unconfigured, or broke.
+                if self._voice_chat_visibility("startup_voice_note", False):
+                    try:
+                        from tools.tts_tool import text_to_speech_tool
+
+                        _note_dir = os.path.join(tempfile.gettempdir(), "hermes_voice")
+                        os.makedirs(_note_dir, exist_ok=True)
+                        _note_path = os.path.join(_note_dir, "startup_note.ogg")
+                        _tts_raw = await asyncio.to_thread(
+                            text_to_speech_tool,
+                            text="Gateway online. Systems nominal.",
+                            output_path=_note_path,
+                        )
+                        _tts = json.loads(_tts_raw)
+                        _audio = _tts.get("file_path", _note_path)
+                        if _tts.get("success") and os.path.isfile(_audio):
+                            await adapter.send_voice(str(home.chat_id), _audio)
+                            logger.info(
+                                "Sent startup voice note to %s:%s",
+                                platform.value, home.chat_id,
+                            )
+                        else:
+                            logger.warning(
+                                "Startup voice note: TTS produced no audio (%s)",
+                                _tts.get("error", "no error reported"),
+                            )
+                    except Exception as exc:
+                        logger.warning("Startup voice note failed: %s", exc)
             except Exception as exc:
                 logger.warning(
                     "Home-channel startup notification failed for %s:%s: %s",
