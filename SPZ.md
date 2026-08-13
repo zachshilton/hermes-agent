@@ -115,6 +115,16 @@ Four conventions in `spz-boot.sh`, each of which has caused a silent failure:
 - **Renaming a cron job needs a removal line.** The existence check only asks whether the *current*
   name is present, so a superseded job keeps running on its old schedule forever. `spz-boot.sh`
   removes `daily-roundup`, `daily-roundup-discord` and `content-ops-poll` on every boot.
+- **A removal line has to live OUTSIDE the enable check**, or the feature cannot be turned off.
+  Cron jobs are stored in `$HERMES_HOME`, which is the Railway volume, so they survive every
+  redeploy. With the removals nested inside `if [ -n "${SPZ_CONTENT_OPS_POLL}" ]`, unsetting that
+  variable skipped the whole block: it stopped the job being *recreated* and did nothing about the
+  one already there, which kept firing hourly against a pipeline the dashboard had taken over. This
+  is not hypothetical — it happened, and the symptom was a poll that survived the removal of its own
+  switch. `hermes cron remove` on an absent job fails harmlessly, so an unconditional removal costs
+  nothing. **`spz-daily-roundup` still has this shape**: its removals sit inside the
+  `SPZ_ROUNDUP_ENABLED` guard, so unsetting that variable will strand the 12PM job the same way.
+  Fix it the same way before relying on that switch.
 - **Anything YAML 1.1 would coerce must stay quoted** in the emitted config, because it is read with
   `yaml.safe_load`. Two live instances, both of which failed silently: Discord channel ids unquoted
   parse as ints, and every `channel_prompts` lookup (which keys on the adapter's string id) misses;

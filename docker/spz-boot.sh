@@ -796,11 +796,27 @@ fi
 # floor; the pipeline is unattended, so nothing downstream notices the latency.
 SPZ_CONTENT_OPS_CRON="${SPZ_CONTENT_OPS_CRON:-0 * * * *}"
 
+# Removals run UNCONDITIONALLY, outside the enable check below. This is the
+# mirror of the trap this file already documents for renamed jobs, and it bit
+# for real: cron jobs live in $HERMES_HOME, which is the Railway volume, so they
+# survive every redeploy. With the removals inside the `if`, unsetting
+# SPZ_CONTENT_OPS_POLL skipped the whole block — the variable stopped the job
+# being RECREATED and did nothing about the one already there, which kept firing
+# hourly against a pipeline Vercel had taken over. Turning a feature off has to
+# be as reachable as turning it on.
+#
+# `hermes cron remove` on an absent job just fails and is suppressed, so running
+# these on every boot costs nothing when there is nothing to remove.
+#
+# content-ops-poll is the pre-SPZ-naming job; without its own line it would keep
+# polling every 30 minutes alongside its replacement, doubling every
+# approve_video/scan_video call on the dashboard side.
+hermes cron remove content-ops-poll >/dev/null 2>&1 || true
+if [ -z "${SPZ_CONTENT_OPS_POLL:-${CONTENT_OPS_POLL_ENABLED}}" ]; then
+  hermes cron remove spz-content-ops-poll >/dev/null 2>&1 || true
+fi
+
 if [ -n "${SPZ_CONTENT_OPS_POLL:-${CONTENT_OPS_POLL_ENABLED}}" ]; then
-  # Same migration reasoning as the roundup job — the pre-SPZ-naming job would
-  # otherwise keep polling every 30 minutes alongside its replacement, doubling
-  # every approve_video/scan_video call on the dashboard side.
-  hermes cron remove content-ops-poll >/dev/null 2>&1 || true
 
   # Removed and recreated on every boot rather than created only when absent,
   # the same departure spz-persona-checkin below already makes and for the same
