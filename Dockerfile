@@ -177,10 +177,18 @@ RUN npm install --prefer-offline --no-audit && \
 # avoids the cross-platform failures that kept [matrix] out of [all]
 # while still making Matrix work in the published container. Fixes #30399.
 #
+# [tts-premium] (elevenlabs) is baked in for exactly the hindsight-client
+# reason above: tools/lazy_deps.py would pip-install it into /opt/hermes/.venv,
+# which is inside the immutable image layer and owned by root while the gateway
+# runs as the `hermes` user — so the install fails, and would vanish on the next
+# redeploy even where it succeeded. SPZ uses ElevenLabs as its Discord voice
+# because the OpenAI voices read as synthetic; without this line that choice is
+# silently unavailable at runtime rather than at build time.
+#
 # The editable link is created after the source copy below.
 COPY pyproject.toml uv.lock ./
 RUN touch ./README.md
-RUN uv sync --frozen --no-install-project --extra all --extra messaging --extra anthropic --extra bedrock --extra azure-identity --extra hindsight --extra matrix
+RUN uv sync --frozen --no-install-project --extra all --extra messaging --extra anthropic --extra bedrock --extra azure-identity --extra hindsight --extra matrix --extra tts-premium
 
 # ---------- Frontend build (cached independently from Python source) ----------
 # Copy only the frontend source trees first so that Python-only changes don't

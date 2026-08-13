@@ -33,6 +33,8 @@ first two are still moving:
   directly as root and bypasses the s6 entrypoint entirely (which is why `spz-boot.sh` does its own
   `chown` at the end).
 - `railway.json` — three lines, unchanged since the gateway invocation was first wired up.
+- `Dockerfile` — one line: `--extra tts-premium`, so the ElevenLabs SDK is baked in rather than
+  lazy-installed into an immutable layer. See "ElevenLabs" below.
 
 The generated `config.yaml` is the whole fork surface at runtime. It contains exactly six things:
 `timezone` (hardcoded `Europe/London`), `model` (a **mapping** of `default` from `${HERMES_MODEL}`,
@@ -349,11 +351,40 @@ local backend first.
 | Variable | Default | Meaning |
 |---|---|---|
 | `SPZ_STT_PROVIDER` | `openai` | `openai` or `groq`. Groq's `whisper-large-v3-turbo` is the cheap/fast option. |
-| `SPZ_TTS_PROVIDER` | `openai` | Leave it. `edge`/`elevenlabs` are lazy-installed and will not work here. |
+| `SPZ_TTS_PROVIDER` | `openai` | `openai` or `elevenlabs` — see below. `edge` is still lazy-installed and will not work here. |
+| `SPZ_ELEVENLABS_MODEL_ID` | `eleven_flash_v2_5` | ElevenLabs only. `eleven_turbo_v2_5` and `eleven_multilingual_v2` trade latency for fidelity. |
+| `SPZ_ELEVENLABS_VOICE_ID` | unset | ElevenLabs only. A real id from the voice library — no default is invented here. |
 | `SPZ_TTS_VOICE` | `alloy` | Any OpenAI voice — `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`. `fable` is the British-accented male. |
 | `SPZ_TTS_MODEL` | `gpt-4o-mini-tts` | |
 | `SPZ_TTS_SPEED` | unset | Rate multiplier, clamped to 0.25–4.0. Omitted when unset. |
 | `SPZ_TTS_INSTRUCTIONS` | unset | Free-text delivery direction, e.g. "Refined British butler. Measured, formal, dry." Omitted when unset. |
+
+#### ElevenLabs, and the one Dockerfile change this fork has made
+
+OpenAI's voices read as synthetic and are slow enough to be felt in a spoken exchange, so
+`SPZ_TTS_PROVIDER=elevenlabs` is the realism/latency option. It needs `ELEVENLABS_API_KEY` and a
+`SPZ_ELEVENLABS_VOICE_ID` from the voice library.
+
+This is the **only Dockerfile change** in the fork: `--extra tts-premium` on the `uv sync` line. The
+reasoning is the one the Dockerfile already applies to `hindsight-client` — `tools/lazy_deps.py`
+would pip-install the SDK into `/opt/hermes/.venv`, inside the immutable image layer, owned by root
+while the gateway runs as `hermes`. The install fails, and would vanish on the next redeploy even
+where it succeeded. Without that extra the provider is silently unavailable at *runtime* rather than
+failing at build.
+
+Three things worth knowing before touching this:
+
+- **STT and TTS no longer share a credential**, so they are gated separately. An ElevenLabs key
+  alone buys a voice that speaks but cannot listen; a Groq key alone is the reverse. Emitting
+  `stt.enabled: true` with no usable key would fail on the first spoken word rather than at boot,
+  which is why each half checks for its own.
+- **`SPZ_ELEVENLABS_*` are deliberately not named `SPZ_TTS_VOICE`/`SPZ_TTS_MODEL`.** Those are the
+  OpenAI voice *name* and model; these are ElevenLabs *ids*, a different namespace. Sharing the
+  names would invite the transposition that already cost one debugging session — a voice name in a
+  model slot 404s at speak time, never at boot.
+- **No `voice_id` default is invented.** The framework's own fallback is Adam, which is American; a
+  made-up id would 404 at speak time. Unset emits no key and warns, so the framework default applies
+  and the log says so.
 
 **Voice, speed and instructions are three different things, and only the first is timbre.**
 `SPZ_TTS_VOICE` picks who is speaking; `SPZ_TTS_SPEED` and `SPZ_TTS_INSTRUCTIONS` shape how. None of

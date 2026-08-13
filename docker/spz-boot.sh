@@ -416,24 +416,103 @@ normalize_bool() {
 SPZ_VOICE_ECHO_TRANSCRIPT="$(normalize_bool "${SPZ_VOICE_ECHO_TRANSCRIPT}" true SPZ_VOICE_ECHO_TRANSCRIPT)"
 SPZ_VOICE_SUPPRESS_TEXT="$(normalize_bool "${SPZ_VOICE_SUPPRESS_TEXT}" false SPZ_VOICE_SUPPRESS_TEXT)"
 
+# ElevenLabs. The OpenAI voices read as synthetic and are slow enough to be felt
+# in a spoken exchange, so this is the realism/latency option — its SDK is baked
+# into the image via `--extra tts-premium` rather than lazy-installed, for the
+# reason the Dockerfile spells out.
+#
+# Separate names from SPZ_TTS_VOICE / SPZ_TTS_MODEL on purpose. Those are the
+# OpenAI voice NAME and model; these are ElevenLabs IDs, a different namespace
+# entirely. Reusing the names would invite exactly the transposition that has
+# already cost one debugging session — a voice in the model slot fails at speak
+# time with a 404, never at boot.
+#
+# The model default is the fast one. eleven_flash_v2_5 is built for
+# conversational latency; eleven_turbo_v2_5 trades some speed for fidelity and
+# eleven_multilingual_v2 is the most faithful and the slowest. Latency is the
+# complaint that brought us here, so speed is the default and the others are a
+# variable away.
+#
+# No voice_id default is invented here — the framework's own fallback (Adam) is
+# American, and picking a British one means choosing a real id from the
+# ElevenLabs voice library. An id made up in a shell script would 404 at speak
+# time, which is the failure mode this file works hardest to avoid.
+SPZ_ELEVENLABS_MODEL_ID="${SPZ_ELEVENLABS_MODEL_ID:-eleven_flash_v2_5}"
+SPZ_ELEVENLABS_VOICE_ID="${SPZ_ELEVENLABS_VOICE_ID:-}"
+
+# STT and TTS no longer share a credential, so they are gated separately. An
+# ElevenLabs key alone buys a voice that speaks but cannot listen; a Groq key
+# alone is the reverse. Emitting `stt.enabled: true` without a key it can use
+# would fail on the first spoken word instead of at boot.
+VOICE_STT_OK=""
 if [ -n "${OPENAI_API_KEY}" ] || [ -n "${VOICE_TOOLS_OPENAI_KEY}" ] || [ -n "${GROQ_API_KEY}" ]; then
+  VOICE_STT_OK="yes"
+fi
+VOICE_TTS_OK=""
+case "${SPZ_TTS_PROVIDER}" in
+  elevenlabs)
+    if [ -n "${ELEVENLABS_API_KEY}" ]; then
+      VOICE_TTS_OK="yes"
+    else
+      echo "[spz-boot] Warning: SPZ_TTS_PROVIDER=elevenlabs but ELEVENLABS_API_KEY is unset; TTS disabled" >&2
+    fi
+    ;;
+  *)
+    if [ -n "${OPENAI_API_KEY}" ] || [ -n "${VOICE_TOOLS_OPENAI_KEY}" ]; then
+      VOICE_TTS_OK="yes"
+    fi
+    ;;
+esac
+
+if [ -n "${VOICE_STT_OK}" ] || [ -n "${VOICE_TTS_OK}" ]; then
   # Quoted for the same reason everything else here is: this is read with
   # yaml.safe_load (YAML 1.1), and an unquoted provider or voice name is one
   # rename away from being coerced to something that isn't a string.
-  VOICE_BLOCK="stt:
+  VOICE_BLOCK=""
+  if [ -n "${VOICE_STT_OK}" ]; then
+    VOICE_BLOCK="stt:
   enabled: true
   provider: \"${SPZ_STT_PROVIDER}\"
-tts:
+"
+  fi
+  if [ -n "${VOICE_TTS_OK}" ]; then
+    VOICE_BLOCK="${VOICE_BLOCK}tts:
   provider: \"${SPZ_TTS_PROVIDER}\"
-  openai:
+"
+    if [ "${SPZ_TTS_PROVIDER}" = "elevenlabs" ]; then
+      VOICE_BLOCK="${VOICE_BLOCK}  elevenlabs:
+    model_id: \"${SPZ_ELEVENLABS_MODEL_ID}\"
+"
+      # Omitted rather than emitted empty when unset: the framework falls back
+      # to its own default voice, whereas an empty string reaches the API as a
+      # blank id.
+      if [ -n "${SPZ_ELEVENLABS_VOICE_ID}" ]; then
+        VOICE_BLOCK="${VOICE_BLOCK}    voice_id: \"${SPZ_ELEVENLABS_VOICE_ID}\"
+"
+      else
+        echo "[spz-boot] Warning: SPZ_ELEVENLABS_VOICE_ID unset; using the framework default voice (Adam, American)" >&2
+      fi
+      TTS_DESC="${SPZ_ELEVENLABS_MODEL_ID}/${SPZ_ELEVENLABS_VOICE_ID:-default}"
+    else
+      VOICE_BLOCK="${VOICE_BLOCK}  openai:
     model: \"${SPZ_TTS_MODEL}\"
     voice: \"${SPZ_TTS_VOICE}\"
-${TTS_EXTRA}
-voice:
+${TTS_EXTRA}"
+      TTS_DESC="${SPZ_TTS_VOICE}"
+    fi
+  else
+    TTS_DESC="disabled"
+  fi
+  VOICE_BLOCK="${VOICE_BLOCK}voice:
   echo_transcript: ${SPZ_VOICE_ECHO_TRANSCRIPT}
   suppress_text_reply: ${SPZ_VOICE_SUPPRESS_TEXT}
 "
-  echo "[spz-boot] Voice enabled (stt=${SPZ_STT_PROVIDER}, tts=${SPZ_TTS_PROVIDER}/${SPZ_TTS_VOICE})"
+  if [ -n "${VOICE_STT_OK}" ]; then
+    STT_DESC="${SPZ_STT_PROVIDER}"
+  else
+    STT_DESC="disabled"
+  fi
+  echo "[spz-boot] Voice enabled (stt=${STT_DESC}, tts=${SPZ_TTS_PROVIDER}/${TTS_DESC})"
 else
   VOICE_BLOCK=""
 fi
