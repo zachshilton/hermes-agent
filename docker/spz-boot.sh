@@ -463,6 +463,33 @@ else
   TOOLSETS_BLOCK=""
 fi
 
+# The model block is a MAPPING, not the bare string this file emitted until an
+# OPENAI_API_KEY took the whole fleet down.
+#
+# `provider` is the load-bearing key. With no provider pinned anywhere, the
+# framework auto-detects one, and the precedence in hermes_cli/auth.py (the
+# comment at ~1705 spells it out) is: 2. config.yaml model.provider, 3. the
+# OPENAI/OPENROUTER env keys, 5. provider-specific env keys. So OPENAI_API_KEY
+# outranks ANTHROPIC_API_KEY and returns "openrouter" — and with no
+# OPENROUTER_API_KEY set, every request goes out with no Authorization header
+# and OpenRouter answers `401 Missing Authentication header`. Setting the key
+# that voice needs silently repointed inference at a provider with no
+# credentials, and because the chat error is sanitized to "Provider
+# authentication failed", it reads as a bad Anthropic key. It is not: rotating
+# ANTHROPIC_API_KEY cannot fix it, because Anthropic is never called.
+#
+# Step 2 above is the fix, and it only exists for a mapping — `isinstance(cfg,
+# dict)` is False for a bare string, so the string form this file used could
+# never pin a provider at all. Emitting the mapping restores exactly the
+# pre-voice behaviour, since auto-detect previously fell through to the
+# ANTHROPIC_API_KEY branch and chose anthropic anyway.
+#
+# SPZ_INFERENCE_PROVIDER exists only as the escape hatch for genuinely moving
+# off Anthropic; leave it unset. Note the framework's own HERMES_INFERENCE_PROVIDER
+# still overrides this at runtime_provider.py:547 — it is checked before the
+# auto path — so a Railway variable remains the fastest way to unblock a live
+# service without a redeploy.
+#
 # Discord is the framework's most verbose display tier by default
 # (gateway/display_config.py's _TIER_HIGH), and this config previously set no
 # display block at all — so every persona channel was narrating the relay it
@@ -485,7 +512,9 @@ fi
 # layer to hang it on.
 cat > "$HERMES_HOME/config.yaml" <<EOF
 timezone: "Europe/London"
-model: "${HERMES_MODEL:-anthropic/claude-sonnet-5}"
+model:
+  default: "${HERMES_MODEL:-anthropic/claude-sonnet-5}"
+  provider: "${SPZ_INFERENCE_PROVIDER:-anthropic}"
 display:
   platforms:
     discord:

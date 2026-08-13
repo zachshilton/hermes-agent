@@ -35,8 +35,10 @@ first two are still moving:
 - `railway.json` — three lines, unchanged since the gateway invocation was first wired up.
 
 The generated `config.yaml` is the whole fork surface at runtime. It contains exactly six things:
-`timezone` (hardcoded `Europe/London`), `model` (`${HERMES_MODEL}`, defaulting to
-`anthropic/claude-sonnet-5`), a `display.platforms.discord` block, the single `mcp_servers.spz`
+`timezone` (hardcoded `Europe/London`), `model` (a **mapping** of `default` from `${HERMES_MODEL}`,
+defaulting to `anthropic/claude-sonnet-5`, and `provider` from `${SPZ_INFERENCE_PROVIDER}`,
+defaulting to `anthropic` — see "Pin the provider" below; it must not go back to a bare string), a
+`display.platforms.discord` block, the single `mcp_servers.spz`
 entry built from `SPZ_MCP_URL`/`SPZ_MCP_TOKEN` with `timeout: 180`, a `platform_toolsets` block
 scoping what each surface loads, and — only when at least one relay channel id is set —
 `platforms.discord.extra.channel_prompts`. An `stt`/`tts` pair appears as a seventh only when a
@@ -113,6 +115,40 @@ Display settings resolve on the **platform** key alone — `ChannelOverride` car
 model/provider/system_prompt, so there is no per-channel layer to hang them on. That means this
 quietens `#spz` too, which is accepted rather than desired. Don't try to scope it per channel
 without first adding that layer upstream.
+
+### Pin the provider, or a voice key takes the fleet down
+
+`model` is emitted as a mapping with an explicit `provider`, and that key is load-bearing. This is
+the one outage this fork has caused itself, so it is worth stating exactly.
+
+With no provider pinned anywhere, the framework auto-detects one. The precedence is spelled out in
+a comment in `hermes_cli/auth.py` (~line 1705): **2.** `config.yaml` `model.provider`, **3.** the
+`OPENAI_API_KEY`/`OPENROUTER_API_KEY` env keys, **5.** provider-specific env keys. So
+`OPENAI_API_KEY` **outranks** `ANTHROPIC_API_KEY` and returns `openrouter`. With no
+`OPENROUTER_API_KEY` set, every request then goes out with no Authorization header, and OpenRouter
+answers `401 Missing Authentication header`.
+
+That is exactly what setting `OPENAI_API_KEY` for voice did. Inference silently repointed at a
+provider with no credentials, and because `_gateway_provider_error_reply` sanitizes the chat reply to
+"Provider authentication failed", it reads as a bad Anthropic key. **It is not** — rotating
+`ANTHROPIC_API_KEY` cannot fix it, because Anthropic is never called. Two rotations were spent
+before the real error surfaced in the logs.
+
+Step 2 above is the fix, and it only works for a **mapping**: `isinstance(cfg, dict)` is `False` for
+a bare string, so the string form this file used until then could never pin a provider at all.
+Emitting the mapping restores exactly the pre-voice behaviour, because auto-detect used to fall
+through to the `ANTHROPIC_API_KEY` branch and pick `anthropic` anyway. Verified both ways against a
+generated config with `OPENAI_API_KEY` set: the bare string resolves to `openrouter`, the mapping to
+`anthropic`.
+
+Two consequences worth keeping:
+
+- **Any service that gets a voice key needs this.** Every persona container is a candidate, so the
+  pin belongs in the generated config rather than in a per-service Railway variable.
+- **`HERMES_INFERENCE_PROVIDER` still overrides it** (`runtime_provider.py:547`, checked before the
+  auto path). That is the fastest way to unblock a live service without a redeploy, and it is what
+  to reach for first in an outage. `SPZ_INFERENCE_PROVIDER` exists only for genuinely moving off
+  Anthropic; leave it unset.
 
 ### Scoping the toolsets, and why it is the biggest cost lever here
 
@@ -301,6 +337,13 @@ local backend first.
 | `SPZ_TTS_PROVIDER` | `openai` | Leave it. `edge`/`elevenlabs` are lazy-installed and will not work here. |
 | `SPZ_TTS_VOICE` | `alloy` | Any OpenAI voice — `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`. |
 | `SPZ_TTS_MODEL` | `gpt-4o-mini-tts` | |
+
+> **Setting `OPENAI_API_KEY` on a service will break inference unless `model.provider` is pinned.**
+> It outranks `ANTHROPIC_API_KEY` in provider auto-detection and silently routes the agent at
+> OpenRouter, which then 401s with no Authorization header. `spz-boot.sh` pins the provider for this
+> reason — see "Pin the provider, or a voice key takes the fleet down" above before adding a voice
+> key anywhere. Prefer `VOICE_TOOLS_OPENAI_KEY`, which the voice block accepts and auto-detection
+> does not read.
 
 The block is **gated on a key being present** (`OPENAI_API_KEY`, `VOICE_TOOLS_OPENAI_KEY` or
 `GROQ_API_KEY`), following the same rule as every other instance-scoped feature here: the Railway
