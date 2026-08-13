@@ -336,6 +336,45 @@ SPZ_TTS_PROVIDER="${SPZ_TTS_PROVIDER:-openai}"
 SPZ_TTS_VOICE="${SPZ_TTS_VOICE:-alloy}"
 SPZ_TTS_MODEL="${SPZ_TTS_MODEL:-gpt-4o-mini-tts}"
 
+# Delivery, as opposed to timbre. SPZ_TTS_VOICE picks WHO is speaking;
+# these two shape HOW. Both are omitted from the emitted config when unset, so
+# this block is a no-op until Railway says otherwise.
+#
+# SPZ_TTS_SPEED is a multiplier the framework clamps to 0.25-4.0. Emitted
+# UNQUOTED because it must reach Python as a number — tts_tool does
+# float(oai_config.get("speed", ...)), which raises on a quoted non-numeric and
+# would take the whole reply down rather than degrade. So validate here: a
+# non-numeric value is dropped with a warning instead of being passed on.
+#
+# SPZ_TTS_INSTRUCTIONS is free-text style direction ("measured, formal, dry"),
+# supported by the gpt-4o*-tts family and rejected by legacy tts-1 (tts_tool
+# warns and drops it there). It is emitted as a YAML block scalar rather than a
+# quoted string precisely because it is prose someone will iterate on: an
+# apostrophe or a stray quote inside double quotes breaks the whole config, and
+# a config that fails to parse takes the gateway down for a wording tweak.
+SPZ_TTS_SPEED="${SPZ_TTS_SPEED:-}"
+SPZ_TTS_INSTRUCTIONS="${SPZ_TTS_INSTRUCTIONS:-}"
+
+TTS_EXTRA=""
+if [ -n "${SPZ_TTS_SPEED}" ]; then
+  case "${SPZ_TTS_SPEED}" in
+    ''|*[!0-9.]*|*.*.*)
+      echo "[spz-boot] Warning: SPZ_TTS_SPEED='${SPZ_TTS_SPEED}' is not a number; ignoring" >&2
+      ;;
+    *)
+      TTS_EXTRA="${TTS_EXTRA}    speed: ${SPZ_TTS_SPEED}
+"
+      ;;
+  esac
+fi
+if [ -n "${SPZ_TTS_INSTRUCTIONS}" ]; then
+  # Block scalar: every line indented under the key, so quotes, apostrophes and
+  # newlines in the value cannot terminate a string or break the document.
+  TTS_EXTRA="${TTS_EXTRA}    instructions: |-
+$(printf '%s\n' "${SPZ_TTS_INSTRUCTIONS}" | sed 's/^/      /')
+"
+fi
+
 # What a spoken turn leaves behind in the TEXT channel. Both keep a voice
 # conversation in the voice channel instead of duplicating it into the chat log:
 # `echo_transcript` is Zach's own speech, posted as "**[Voice]** @zach: ...";
@@ -389,6 +428,7 @@ tts:
   openai:
     model: \"${SPZ_TTS_MODEL}\"
     voice: \"${SPZ_TTS_VOICE}\"
+${TTS_EXTRA}
 voice:
   echo_transcript: ${SPZ_VOICE_ECHO_TRANSCRIPT}
   suppress_text_reply: ${SPZ_VOICE_SUPPRESS_TEXT}

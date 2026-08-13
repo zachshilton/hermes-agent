@@ -52,13 +52,19 @@ customizing core. Examples: the Discord per-persona relay is
 `hermes cron create --deliver discord` job, not code. Prefer the same route — if a change can be
 made in generated `config.yaml` or env vars, do it there.
 
-There is exactly **one** Python exception, and the bar it had to clear is the point: two settings in
-`gateway/run.py` controlling what a spoken turn writes into the text channel (see "Keeping a voice
-conversation in the voice channel"). It was taken only after confirming no config path existed —
-both behaviours were unconditional, and the agent has no tool that could route output to chat
-itself. Anything added here should meet the same test, and should follow the same shape: read from
-`config.yaml`, default to the framework's existing behaviour, and keep the diff to hunks that are
-trivial to re-apply over an upstream merge.
+There are exactly **two** Python exceptions, and the bar they had to clear is the point:
+
+1. Two settings in `gateway/run.py` controlling what a spoken turn writes into the text channel (see
+   "Keeping a voice conversation in the voice channel"). Taken only after confirming no config path
+   existed — both behaviours were unconditional, and the agent has no tool that could route output
+   to chat itself.
+2. Three lines in `tools/tts_tool.py` passing an `instructions` field to OpenAI TTS (see the voice
+   table below). The framework read `model`, `voice`, `base_url` and `speed` from config but had no
+   way to reach the style-steering parameter the `gpt-4o*-tts` models accept.
+
+Anything added here should meet the same test — no config path exists *and* the behaviour is
+actually wrong — and follow the same shape: read from `config.yaml`, default to the framework's
+existing behaviour, and keep the diff to hunks that are trivial to re-apply over an upstream merge.
 
 ### Naming: `SPZ_` is for us, `DISCORD_*`/`HERMES_*` belong to the framework
 
@@ -344,8 +350,32 @@ local backend first.
 |---|---|---|
 | `SPZ_STT_PROVIDER` | `openai` | `openai` or `groq`. Groq's `whisper-large-v3-turbo` is the cheap/fast option. |
 | `SPZ_TTS_PROVIDER` | `openai` | Leave it. `edge`/`elevenlabs` are lazy-installed and will not work here. |
-| `SPZ_TTS_VOICE` | `alloy` | Any OpenAI voice — `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`. |
+| `SPZ_TTS_VOICE` | `alloy` | Any OpenAI voice — `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`. `fable` is the British-accented male. |
 | `SPZ_TTS_MODEL` | `gpt-4o-mini-tts` | |
+| `SPZ_TTS_SPEED` | unset | Rate multiplier, clamped to 0.25–4.0. Omitted when unset. |
+| `SPZ_TTS_INSTRUCTIONS` | unset | Free-text delivery direction, e.g. "Refined British butler. Measured, formal, dry." Omitted when unset. |
+
+**Voice, speed and instructions are three different things, and only the first is timbre.**
+`SPZ_TTS_VOICE` picks who is speaking; `SPZ_TTS_SPEED` and `SPZ_TTS_INSTRUCTIONS` shape how. None of
+them touch *what* is said — TTS reads the reply text verbatim, so a chatty agent in a British voice
+is still chatty. Register and brevity come from `SPZ_SOUL_MD`. This is the distinction that makes
+"it doesn't sound right" a SOUL fix far more often than a voice fix.
+
+Four traps here, all of which this file has hit variants of before:
+
+- **`fable` in `SPZ_TTS_MODEL` is a 404, not a validation error.** The framework passes both straight
+  through (`tts_tool.py`), so a voice name in the model slot fails at OpenAI with
+  `The model 'fable' does not exist`, at speak time rather than at boot. The two variable names sit
+  next to each other and are easy to transpose — check the model slot first when TTS goes quiet.
+- **`instructions` is the fork's second Python change**, three lines in `_generate_openai_tts`. It is
+  gated on the model: the `gpt-4o*-tts` family accepts it, legacy `tts-1`/`tts-1-hd` reject the
+  parameter outright, so it is dropped with a warning there rather than turned into a 400.
+- **`speed` is emitted UNQUOTED** because `tts_tool` calls `float()` on it, which raises on a
+  non-numeric — that would take the reply down rather than degrade. `spz-boot.sh` validates it and
+  drops a non-number with a warning instead of passing it on.
+- **`instructions` is emitted as a YAML block scalar**, not a quoted string, because it is prose
+  someone will iterate on. An apostrophe or a stray double quote inside a quoted scalar breaks the
+  whole document, and a config that will not parse takes the gateway down over a wording tweak.
 
 > **Setting `OPENAI_API_KEY` on a service will break inference unless `model.provider` is pinned.**
 > It outranks `ANTHROPIC_API_KEY` in provider auto-detection and silently routes the agent at
