@@ -14,8 +14,8 @@ skill-vs-tool decision guide.
 ## SPZ: a deployment fork, not an upstream dev checkout
 
 This project is **SPZ**. `origin` is `github.com/zachshilton/hermes-agent` (a fork of
-NousResearch/Hermes-Agent), deployed on Railway as the `hermes-spz` and `hermes-manager` services, plus one service per persona
-(see "One container per persona" below);
+NousResearch/Hermes-Agent), deployed on Railway as a single service, `hermes-spz`
+(it was briefly one service per persona — see "One container, and the fleet that used to be four" below);
 the dashboard and MCP server it talks to (`api/mcp.ts`, `api/discord-inbound.ts`) live in a separate
 SPZ repo. Refer to the project as SPZ, not Hermes — "Hermes" means the vendored upstream framework.
 Every commit unique to this fork touches the same small set of files, and in practice only the
@@ -107,7 +107,8 @@ old Railway variable check which new name still reads it:
 Four conventions in `spz-boot.sh`, each of which has caused a silent failure:
 
 - **Instances are scoped by which env var Railway sets**, not a service-name check:
-  `SPZ_ROUNDUP_ENABLED` ⇒ `hermes-spz`; `SPZ_CONTENT_OPS_POLL` ⇒ `hermes-manager`. These are now
+  `SPZ_ROUNDUP_ENABLED` and `SPZ_CONTENT_OPS_POLL` both ⇒ `hermes-spz`, which since the collapse is
+  the only service — but the rule outlives the fleet and must be kept. These are
   dedicated flags precisely because the previous approach — piggybacking on whichever credential
   happened to be unique to a service — broke twice, as `SMS_ALLOWED_USERS` and then
   `DISCORD_ALLOWED_USERS` were retired and took the roundup cron with them.
@@ -163,8 +164,9 @@ generated config with `OPENAI_API_KEY` set: the bare string resolves to `openrou
 
 Two consequences worth keeping:
 
-- **Any service that gets a voice key needs this.** Every persona container is a candidate, so the
-  pin belongs in the generated config rather than in a per-service Railway variable.
+- **Any service that gets a voice key needs this**, which today means the only one — but the pin
+  belongs in the generated config rather than a per-service Railway variable, so that it survives
+  ever splitting out again.
 - **`HERMES_INFERENCE_PROVIDER` still overrides it** (`runtime_provider.py:547`, checked before the
   auto path). That is the fastest way to unblock a live service without a redeploy, and it is what
   to reach for first in an outage. `SPZ_INFERENCE_PROVIDER` exists only for genuinely moving off
@@ -188,8 +190,8 @@ reaches over MCP. So `spz-boot.sh` emits two narrow lists:
 | `SPZ_TOOLSETS` | `discord,clarify,memory,session_search,todo,skills` | 7 tools, ~4.4k tokens (was ~9.8k) |
 | `SPZ_CRON_TOOLSETS` | `clarify,memory,todo` | 3 tools, ~1.5k tokens (was ~9.8k) |
 
-`cronjob` is appended to the Discord list only where `SPZ_CONTENT_OPS_POLL` is set — hermes-manager
-is the one service that owns a schedule worth asking an agent to change. The literal `full` on
+`cronjob` is appended to the Discord list only where `SPZ_CONTENT_OPS_POLL` is set — the service
+owning a schedule worth asking an agent to change, which is now `hermes-spz` and both crons. The literal `full` on
 either variable omits that key entirely and restores the framework default; that is the way back
 without a code change if an agent turns out to need something cut here.
 
@@ -217,114 +219,75 @@ own `cronjob` tool can write one. The lever that does exist is `HERMES_MODEL` pe
 which crons honour — but it is service-wide, so a cheap model on `hermes-spz` also makes the
 interactive `#spz` agent cheap.
 
-### One container per persona
+### One container, and the fleet that used to be four
 
-The original shape was one container: `hermes-spz` answered every persona channel itself, primed by
-`channel_prompts` to relay each message to that persona's MCP tool. Each persona is now moving onto
-its own Railway service with its own Discord bot and its own `SOUL.md`, scoped to its own channel,
-so Zach talks to the agent directly instead of through a carrier. Three variables drive the move:
+SPZ runs as a single Railway service, `hermes-spz`, with one Discord bot answering `#spz` and
+`#approvals`. It owns both crons: the 12PM roundup and the hourly content-ops poll. That is the
+whole deployment.
 
-| Variable | Meaning |
-|---|---|
-| `SPZ_ROLE` | `spz` (default) \| `trainer` \| `clinic` \| `manager` \| `clz`. Which container this is. Unrecognized values warn and are treated as a persona, not as `spz` — a start command must not refuse to boot over a typo. |
-| `SPZ_PERSONA_CHANNEL` | The one channel id this persona owns. On a non-`spz` role it derives `DISCORD_ALLOWED_CHANNELS` (whitelist: the bot ignores every other channel) and `DISCORD_FREE_RESPONSE_CHANNELS` (waives `DISCORD_REQUIRE_MENTION`, which defaults to true). Both only when Railway hasn't set them explicitly. |
-| `SPZ_RELAY_CHANNELS` | Comma-separated persona keys (`trainer,clinic,manager,clz`, no spaces) this instance still emits `channel_prompts` for. Unset means all four on `spz` and none on a persona. The literal `none` spells out an empty list. |
+It was not always. For a stretch each persona — The Trainer, The Medical Team, The Manager, CLZ —
+was moving onto its own Railway service with its own bot and its own `SOUL.md`, scoped to its own
+channel, so that Zach talked to each agent directly instead of through a carrier. Before that,
+`hermes-spz` answered all four persona channels itself, primed by `channel_prompts` to hand each
+message to that persona's MCP tool and echo the reply back untouched. Both shapes are gone. The
+persona channels are abandoned rather than reassigned: SPZ does not relay them and does not answer
+them in its own voice either. Everything happens in `#spz`.
 
-`SPZ_ROLE` defaults to `spz` so that a service whose Railway variables have not been touched boots
-exactly as it did before the variable existed — landing the change is a no-op until Railway says
-otherwise, which is the whole safety story. Every role-dependent branch is written as "spz is the
-status quo, a persona is the departure" for the same reason.
+The collapse cost exactly one Railway variable, `SPZ_RELAY_CHANNELS=none`, plus moving
+`SPZ_CONTENT_OPS_POLL` and `SPZ_CONTENT_OPS_CRON` off the deleted `hermes-manager`. That it was
+that cheap is not luck — it is the `SPZ_ROLE` default paying out. Every role-dependent branch in
+`spz-boot.sh` is written as "spz is the status quo, a persona is the departure", so a service that
+never sets `SPZ_ROLE` takes the same path it took before the variable existed. The one-container
+deployment is the branch the file was always written to favour.
 
-The migration is one persona at a time: stand up the persona's service, then drop its key from
-`SPZ_RELAY_CHANNELS` on `hermes-spz`. Because `DERIVED_FREE_CHANNELS` is accumulated inside
-`add_persona_channel`, a persona that drops out of the relay list leaves the free-response list in
-the same breath — there is no second place to edit. #spz and #approvals are added to that list
-regardless of how many relays survive, so the boot where the last persona moves out doesn't
-silently cost #approvals its free-typed `YES <code>`.
+**The persona machinery is still in `spz-boot.sh`, dormant, and that is deliberate.** `SPZ_ROLE`,
+`SPZ_PERSONA_CHANNEL`, `SPZ_PERSONA_CRON`, the `DISCORD_ALLOW_BOTS` line and the fleet roster are
+all gated on a role this deployment never sets, and grepping the repo for them returns only this
+file and that script — no Python reads any of it, so "dormant" is provable rather than assumed.
+Deleting it would buy nothing at runtime and would foreclose ever splitting out again, at the
+price of a large untested diff in the one file whose first real run is a production boot. It stays.
+What must not stay is prose describing it as live, which is why this section exists in this shape.
 
-A persona service needs: `SPZ_ROLE`, `SPZ_PERSONA_CHANNEL`, `SPZ_SOUL_MD`, `SPZ_MCP_URL`,
-`SPZ_MCP_TOKEN`, `ANTHROPIC_API_KEY`, `DISCORD_BOT_TOKEN` (its own bot, invited to the guild with
-read/send on its one channel), `DISCORD_ALLOWED_USERS`, `DISCORD_HOME_CHANNEL` (set to the same id as `SPZ_PERSONA_CHANNEL` — it
-is the destination for cron and proactive delivery, and is not derived), the full set of
-`SPZ_CHANNEL_{TRAINER,CLINIC,MANAGER,CLZ}` (not just its own — see "The fleet talks to itself"
-below), and optionally `HERMES_MODEL`.
-`HERMES_HOME` is baked in by the image (`ENV HERMES_HOME=/opt/data`) and only needs a Railway
-volume mounted there. It must **not** get `SPZ_ROUNDUP_ENABLED` or `SPZ_CONTENT_OPS_POLL` —
-those stay on `hermes-spz` and `hermes-manager` respectively, per the dedicated-flag rule above.
-The roundup's deprecated `DISCORD_ALLOWED_USERS` fallback is honoured only when `SPZ_ROLE` is
-`spz`, because every persona service sets `DISCORD_ALLOWED_USERS` and would otherwise inherit a
-12PM roundup cron; the guard itself still keys on `SPZ_ROUNDUP_ENABLED`.
+**Two variables in that machinery are not dormant, and one of them is the trap.**
+`SPZ_RELAY_CHANNELS` must remain set to the literal `none`. Deleting it does not mean "no relays":
+`spz-boot.sh` reads an unset value on the `spz` role as *all four*, so removing the variable during
+a tidy-up restores every persona relay at once, with the boot log cheerfully announcing the derived
+channels. And `SPZ_CHANNEL_HOME` and `SPZ_CHANNEL_APPROVALS` must survive any cleanup of the other
+`SPZ_CHANNEL_*` ids, because with no relays left they are the *only* remaining source of
+`DISCORD_FREE_RESPONSE_CHANNELS`. Delete them and `#approvals` silently starts requiring an
+`@mention`, which means a free-typed `YES <code>` is never seen — the exact failure this file has
+warned about since the relay list was introduced. Verified by hand: with `SPZ_RELAY_CHANNELS=none`
+and both ids set, the boot logs `Free-response channels derived: <approvals>,<spz>`; with the ids
+removed it logs nothing at all and the variable is never exported.
 
-### The fleet talks to itself, in the persona channels
+#### Why the fleet was shaped the way it was
 
-The personas can now start conversations with each other, not just answer Zach. Both halves of that
-are set up in `spz-boot.sh` and both are **off on `spz`**, which is load-bearing rather than tidy:
+Worth keeping, because it is the reasoning any future split-out would otherwise have to rediscover
+the hard way, and because two of the rules still constrain what can be built here.
 
-- **Inbound** — `DISCORD_ALLOW_BOTS=all` (read by `gateway/authz_mixin.py`) on persona roles only,
-  so a message another agent posts in this channel is admitted.
-- **Outbound** — a roster of the other three, each as `send_message with target discord:<id>`,
-  appended to `SPZ_SOUL_MD` before `SOUL.md` is written. It goes in SOUL rather than
-  `channel_prompts` because SOUL is the only context that survives into a **cron-triggered** turn,
-  and hermes-manager's content-ops poll is the job most likely to need to tell another agent
-  something. Concatenating into the variable (not appending to the file) keeps the single existing
-  write the only thing touching `SOUL.md`, so a restart can't accumulate a roster per boot.
+There was deliberately **no shared `#agents` channel**, and the argument was structural rather than
+stylistic. This framework has no loop guard — nothing counts bot-to-bot turns or breaks a cycle.
+It did not need one, because exactly one bot listened per channel and no bot wakes on its own
+messages, so an exchange ran out on its own. Two listeners in one room is the single arrangement
+nothing here stops. **That rule survives the collapse and still applies**: if a second bot is ever
+pointed at `#spz`, nothing in this framework prevents the two of them from talking until a budget
+runs out.
 
-There is deliberately **no shared `#agents` channel.** The safety argument is entirely structural:
-this framework has no loop guard, nothing counts bot-to-bot turns, and exactly one bot listens per
-channel while no bot wakes on its own messages — so an exchange runs out on its own. Two listeners
-in one room is the one arrangement nothing here stops. For the same reason `hermes-spz` stays blind
-to bot messages: it relays the persona channels and posts those answers back as a bot, so if it also
-listened to bots it would answer and re-relay its own relays.
+For the same reason `hermes-spz` was kept blind to bot messages (`DISCORD_ALLOW_BOTS` left at its
+`none` default, set to `all` on persona roles only). It relayed the persona channels and posted
+those answers back as a bot, so if it had also listened to bots it would have answered and
+re-relayed its own relays. The hazard was removed structurally instead of by getting a cutover order
+right — which is why the collapse needed no cutover order either.
 
-Three consequences worth knowing before editing this:
+The outbound half was a roster of the other three agents, each as `send_message with target
+discord:<id>`, concatenated into `SPZ_SOUL_MD` before `SOUL.md` was written. It went in SOUL rather
+than `channel_prompts` because SOUL is the only context that survives into a **cron-triggered**
+turn, and it concatenated into the variable rather than appending to the file so that a restart
+could not accumulate a roster per boot. Self was excluded from that roster: an agent handed its own
+channel id will post to it, and since a bot never wakes on its own messages that send looks
+delivered and goes nowhere.
 
-- Each persona needs **all four** `SPZ_CHANNEL_*` ids, not just its own — an agent that doesn't know
-  the other channel ids can only ever reply where it was spoken to. A missing id drops that line
-  from the roster silently, which is the intended degrade (no roster beats a dead target).
-- **Self is excluded** from the roster. An agent handed its own channel id will post to it, and
-  since a bot never wakes on its own messages that send looks delivered and goes nowhere.
-- `DISCORD_BOTS_REQUIRE_INLINE_MENTION` is left at its `false` default on purpose. It guards against
-  reply ping-pong between bots sharing a channel, which one-listener-per-channel already prevents;
-  turning it on would oblige every agent to know the others' bot *user* ids on top of their channel
-  ids, and a missing `<@id>` is a silent no-answer.
-
-### A persona's own proactive turn
-
-Everything above lets a persona *answer* — Zach, or another agent. Nothing makes it speak first:
-the two crons in `spz-boot.sh` belong to `hermes-spz` (the roundup) and `hermes-manager` (the
-content-ops poll), so a persona container has no scheduled turn at all. Two optional variables give
-it one, delivered to its own channel via `DISCORD_HOME_CHANNEL`:
-
-| Variable | Meaning |
-|---|---|
-| `SPZ_PERSONA_CRON` | Cron expression, e.g. `0 8 * * *`. **Europe/London**, see below. |
-| `SPZ_PERSONA_CRON_PROMPT` | What that turn should do, in plain English. |
-
-Both are required — a schedule with no prompt warns and creates nothing, rather than posting an
-empty turn on a timer. Unset on a service means no job, so landing this changed no live behaviour;
-skipped entirely on `spz`, which already posts the roundup into #spz.
-
-Two departures from the roundup cron, both deliberate:
-
-- **The job is removed and recreated on every boot**, not created only when absent. The rule is:
-  a job whose schedule or prompt comes from a Railway variable must be recreated every boot; only
-  a job whose schedule *and* prompt are literals in the script may be name-checked. A name check
-  would pin the job to whatever the variable said on first boot — editing it would look like it
-  worked and change nothing. The cost is that the next-run clock resets on each redeploy, which is
-  invisible for a daily check-in. `spz-content-ops-poll` follows the same rule since `79d6a69` gave
-  it `SPZ_CONTENT_OPS_CRON` (default `0 * * * *`, widened from `*/30`); `spz-daily-roundup` is now
-  the only job still created behind a name check, because its `0 12 * * *` is a literal.
-- **The job name carries no role** (`spz-persona-checkin`, not `spz-trainer-checkin`). The name is
-  what `remove` keys on, so a role-derived one would strand a job on any service whose `SPZ_ROLE`
-  changed — the superseded-name trap that needs explicit removal lines elsewhere in this file. One
-  container runs one persona, so a fixed name cannot collide.
-
-**All cron schedules run in Europe/London**, which `spz-boot.sh` hardcodes into `config.yaml`. That
-is right for the 12PM roundup and is why it survives the BST/GMT change without a seasonal nudge,
-but it is not the local time of whoever writes the schedule — `0 8 * * *` is 8AM London, which is
-mid-afternoon at UTC+8. Nothing warns about this. If a persona check-in ever needs to land at a
-local hour, make the timezone a variable rather than hand-computing an offset, which would drift by
-an hour twice a year against a zone that doesn't observe DST.
+None of it runs now. All of it is one Railway variable away from running again.
 
 ### Talking to an agent in a Discord voice channel
 
@@ -530,7 +493,9 @@ exits cleanly and leaves the two generated files behind to inspect. Check all fi
 
 - **Both role paths.** `SPZ_ROLE=<persona>` and the default `spz` take different branches almost
   everywhere. A persona emits the fleet roster into `SOUL.md` and logs "admits messages from other
-  agents"; `spz` emits neither and instead derives the free-response list.
+  agents"; `spz` emits neither and instead derives the free-response list. Still worth running both
+  precisely *because* Railway no longer does — since the collapse the persona path is exercised only
+  by hand, so a change that breaks it will not surface until someone tries to split out again.
 - **Self-exclusion.** A persona's roster must contain the other three channel ids and *not* its own.
 - **Quoted scalars.** `grep '"' config.yaml` — the `channel_prompts` keys must come out as `"111"`,
   not `111`, and `tool_progress` as `"off"`, not `off`. Unquoted, the ids parse as ints and every
@@ -539,7 +504,9 @@ exits cleanly and leaves the two generated files behind to inspect. Check all fi
   is a separate platform key with its own default, so a run that narrows `discord` alone leaves
   every scheduled turn still paying for the full bundle — the bigger of the two savings, lost with
   nothing in the config looking wrong. `cronjob` must appear in the `discord` list only where
-  `SPZ_CONTENT_OPS_POLL` is set, or every persona carries a schema for a schedule it does not own.
+  `SPZ_CONTENT_OPS_POLL` is set. The original reason — sparing every persona a schema for a
+  schedule it did not own — is moot with one container, but the check is still the cheap way to
+  catch the rider being wired to the wrong flag.
   And `SPZ_TOOLSETS=full SPZ_CRON_TOOLSETS=full` must leave the key out of the file altogether: an
   emitted key whose list is empty resolves to a platform with no native tools at all, the opposite
   of what `full` promises, so the way back has to be checked as an absence rather than assumed.
