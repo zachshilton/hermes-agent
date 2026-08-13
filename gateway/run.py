@@ -12039,6 +12039,22 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             _already_sent = bool(agent_result.get("already_sent"))
             if self._should_send_voice_reply(event, response, agent_messages, already_sent=_already_sent):
                 await self._send_voice_reply(event, response)
+                # Spoken answer delivered — optionally skip posting the same
+                # words again as text. Same "delivery decision, not a transcript
+                # mutation" pattern as the intentional-silence branch above: the
+                # assistant turn stays in session history, only the outbound
+                # chat copy is dropped.
+                #
+                # Deliberately nested inside the send: suppression can never
+                # apply unless the audio actually went out, so a TTS failure
+                # leaves the text reply as the fallback rather than swallowing
+                # the answer entirely. And never when streaming already
+                # delivered it — blanking the response then would not unsend
+                # what the user has already read.
+                if not _already_sent and self._voice_chat_visibility(
+                    "suppress_text_reply", False
+                ):
+                    response = ""
 
             # If streaming already delivered the response, extract and
             # deliver any MEDIA: files before returning None.  Streaming
@@ -12938,14 +12954,21 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             )
             return
 
-        # Show transcript in text channel (after auth, with mention sanitization)
-        try:
-            channel = adapter._client.get_channel(text_ch_id)
-            if channel:
-                safe_text = transcript[:2000].replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
-                await channel.send(f"**[Voice]** <@{user_id}>: {safe_text}")
-        except Exception:
-            pass
+        # Show transcript in text channel (after auth, with mention sanitization).
+        # Gated on voice.echo_transcript, default True so this is unchanged for
+        # anyone who has not opted out. Turning it off keeps a spoken
+        # conversation in the voice channel instead of transcribing it into the
+        # text log \u2014 the transcript still reaches the agent either way, since it
+        # travels in the synthetic MessageEvent below rather than via the
+        # channel post.
+        if self._voice_chat_visibility("echo_transcript", True):
+            try:
+                channel = adapter._client.get_channel(text_ch_id)
+                if channel:
+                    safe_text = transcript[:2000].replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
+                    await channel.send(f"**[Voice]** <@{user_id}>: {safe_text}")
+            except Exception:
+                pass
 
         # Build a synthetic MessageEvent and feed through the normal pipeline
         # Use SimpleNamespace as raw_message so _get_guild_id() can extract
@@ -12959,6 +12982,23 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         )
 
         await adapter.handle_message(event)
+
+    def _voice_chat_visibility(self, key: str, default: bool) -> bool:
+        """Read a ``voice.<key>`` boolean from config.yaml, defaulting safely.
+
+        Governs what a voice turn writes into the *text* channel. Both callers
+        default to the historical behaviour, so an install with no ``voice``
+        block behaves exactly as it did before these settings existed.
+
+        Config rather than an env var on purpose: these are display preferences,
+        not credentials, and behavioural settings belong in config.yaml.
+        """
+        try:
+            from hermes_cli.config import load_config as _load_full_config
+
+            return bool((_load_full_config().get("voice") or {}).get(key, default))
+        except Exception:
+            return default
 
     def _should_send_voice_reply(
         self,

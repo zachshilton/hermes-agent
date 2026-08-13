@@ -336,6 +336,47 @@ SPZ_TTS_PROVIDER="${SPZ_TTS_PROVIDER:-openai}"
 SPZ_TTS_VOICE="${SPZ_TTS_VOICE:-alloy}"
 SPZ_TTS_MODEL="${SPZ_TTS_MODEL:-gpt-4o-mini-tts}"
 
+# What a spoken turn leaves behind in the TEXT channel. Both keep a voice
+# conversation in the voice channel instead of duplicating it into the chat log:
+# `echo_transcript` is Zach's own speech, posted as "**[Voice]** @zach: ...";
+# `suppress_text_reply` is SPZ's answer, otherwise both spoken AND posted.
+#
+# The defaults reproduce the framework's historical behaviour exactly, so this
+# block changes nothing until a Railway variable says otherwise — the same
+# safety story as SPZ_ROLE. These are display preferences rather than
+# credentials, which is why they are config.yaml keys read by
+# _voice_chat_visibility rather than env vars the gateway reads directly.
+#
+# Note what suppress_text_reply does NOT do: the assistant turn is still written
+# to session history, so the conversation stays coherent across turns. Only the
+# outbound chat copy is dropped, and only when the audio actually went out — a
+# TTS failure falls back to posting the text rather than losing the answer.
+SPZ_VOICE_ECHO_TRANSCRIPT="${SPZ_VOICE_ECHO_TRANSCRIPT:-true}"
+SPZ_VOICE_SUPPRESS_TEXT="${SPZ_VOICE_SUPPRESS_TEXT:-false}"
+
+# These two are emitted UNQUOTED, which is the exact inverse of the rule the
+# rest of this file follows — and for the same underlying reason. They have to
+# reach Python as YAML booleans, because the reader takes bool() of whatever it
+# finds and `bool("false")` is True. Quote them and "off" means "on", silently.
+#
+# So normalise here rather than trusting the Railway value: anything that is not
+# recognisably true/false becomes the documented default and says so. Without
+# this, `SPZ_VOICE_SUPPRESS_TEXT=no` emits the bare word `no`, which YAML 1.1
+# does read as False — but `=nope` emits a string, and every string is truthy.
+# That is the third instance of this trap in this file, as predicted.
+normalize_bool() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    true|yes|on|1)   printf 'true' ;;
+    false|no|off|0)  printf 'false' ;;
+    *)
+      printf '%s' "$2"
+      echo "[spz-boot] Warning: $3='$1' is not a boolean; using $2" >&2
+      ;;
+  esac
+}
+SPZ_VOICE_ECHO_TRANSCRIPT="$(normalize_bool "${SPZ_VOICE_ECHO_TRANSCRIPT}" true SPZ_VOICE_ECHO_TRANSCRIPT)"
+SPZ_VOICE_SUPPRESS_TEXT="$(normalize_bool "${SPZ_VOICE_SUPPRESS_TEXT}" false SPZ_VOICE_SUPPRESS_TEXT)"
+
 if [ -n "${OPENAI_API_KEY}" ] || [ -n "${VOICE_TOOLS_OPENAI_KEY}" ] || [ -n "${GROQ_API_KEY}" ]; then
   # Quoted for the same reason everything else here is: this is read with
   # yaml.safe_load (YAML 1.1), and an unquoted provider or voice name is one
@@ -348,6 +389,9 @@ tts:
   openai:
     model: \"${SPZ_TTS_MODEL}\"
     voice: \"${SPZ_TTS_VOICE}\"
+voice:
+  echo_transcript: ${SPZ_VOICE_ECHO_TRANSCRIPT}
+  suppress_text_reply: ${SPZ_VOICE_SUPPRESS_TEXT}
 "
   echo "[spz-boot] Voice enabled (stt=${SPZ_STT_PROVIDER}, tts=${SPZ_TTS_PROVIDER}/${SPZ_TTS_VOICE})"
 else

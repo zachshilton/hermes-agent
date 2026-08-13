@@ -44,12 +44,21 @@ scoping what each surface loads, and — only when at least one relay channel id
 `platforms.discord.extra.channel_prompts`. An `stt`/`tts` pair appears as a seventh only when a
 voice key is present.
 
-**No Python has ever been written in this fork.** The working convention, stated explicitly in the
-commit messages, is to reach for existing framework config before customizing core. Examples: the
-Discord per-persona relay is `platforms.discord.extra.channel_prompts` (read by
-`resolve_channel_prompt` in `gateway/platforms/base.py`), not a forwarding endpoint; the daily
-roundup is a `hermes cron create --deliver discord` job, not code. Prefer the same route — if a
-change can be made in generated `config.yaml` or env vars, do it there.
+**This fork contains almost no Python, and adding more is a last resort.** The working convention,
+stated explicitly in the commit messages, is to reach for existing framework config before
+customizing core. Examples: the Discord per-persona relay is
+`platforms.discord.extra.channel_prompts` (read by `resolve_channel_prompt` in
+`gateway/platforms/base.py`), not a forwarding endpoint; the daily roundup is a
+`hermes cron create --deliver discord` job, not code. Prefer the same route — if a change can be
+made in generated `config.yaml` or env vars, do it there.
+
+There is exactly **one** Python exception, and the bar it had to clear is the point: two settings in
+`gateway/run.py` controlling what a spoken turn writes into the text channel (see "Keeping a voice
+conversation in the voice channel"). It was taken only after confirming no config path existed —
+both behaviours were unconditional, and the agent has no tool that could route output to chat
+itself. Anything added here should meet the same test, and should follow the same shape: read from
+`config.yaml`, default to the framework's existing behaviour, and keep the diff to hunks that are
+trivial to re-apply over an upstream merge.
 
 ### Naming: `SPZ_` is for us, `DISCORD_*`/`HERMES_*` belong to the framework
 
@@ -366,8 +375,45 @@ Four things deliberately *not* done:
   `DISCORD_ALLOWED_CHANNELS` — `/voice join` is typed in a text channel, and the whitelist gates
   slash commands as well as messages.
 - **`VOICE_TIMEOUT` is left alone.** The adapter auto-disconnects after 300s of silence, and it is a
-  class attribute (`plugins/platforms/discord/adapter.py`), not config — changing it would mean
-  patching Python, which this fork does not do.
+  class attribute (`plugins/platforms/discord/adapter.py`), not config. Changing it would mean a
+  second Python patch for a value nobody has complained about — the bar described above is "no
+  config path exists *and* the behaviour is actually wrong", and this clears only the first half.
+
+#### Keeping a voice conversation in the voice channel
+
+By default a spoken turn writes itself into the text channel twice: the transcript of what Zach said
+is posted as `**[Voice]** @zach: …`, and SPZ's answer is posted as text *and* spoken. Two
+`config.yaml` settings turn each off, emitted by `spz-boot.sh` from Railway variables:
+
+| Variable | Default | Config key | Effect when flipped |
+|---|---|---|---|
+| `SPZ_VOICE_ECHO_TRANSCRIPT` | `true` | `voice.echo_transcript` | Zach's speech stops appearing in the text channel |
+| `SPZ_VOICE_SUPPRESS_TEXT` | `false` | `voice.suppress_text_reply` | SPZ's answer is spoken but not posted |
+
+**This is the fork's one Python change**, in `gateway/run.py`: a `_voice_chat_visibility` helper plus
+two call sites. It was necessary because neither behaviour had a config path — the transcript post
+was unconditional, and the reply text is the agent's only output channel. There is no
+agent-callable `send_message` (withheld on purpose, `toolsets.py:373`) and the `discord` tool stops
+at read/pin/delete/role, so an agent cannot choose to write to chat separately from what it says.
+That last point is the real constraint: **"speak briefly, put the detail in chat" is not currently
+expressible** — one string is both spoken and posted, so the only lever is making the reply itself
+short, via `SOUL.md`.
+
+Three details that are load-bearing:
+
+- **The suppression is nested inside the send.** It can only apply once the audio has actually gone
+  out, so a TTS failure falls back to posting the text rather than swallowing the answer, and it is
+  skipped entirely when streaming already delivered the reply (blanking it then would not unsend
+  what has been read).
+- **It is a delivery decision, not a transcript mutation** — the assistant turn stays in session
+  history, so later turns keep normal user/assistant alternation. This deliberately mirrors the
+  `_intentional_silence` branch a few lines above it, which is the precedent that makes the change
+  safe rather than novel.
+- **The two booleans are emitted UNQUOTED**, the inverse of the quoting rule everywhere else in this
+  file, because the reader takes `bool()` of what it finds and `bool("false")` is `True` — quoting
+  them would make "off" mean "on", silently. `spz-boot.sh` normalises the Railway value to a strict
+  `true`/`false` and warns on anything else, because a bare `nope` would otherwise emit a string and
+  every string is truthy. That is the third instance of this trap here, as this file predicted.
 
 Discord-side, the bot needs **Connect** and **Speak** on the voice channel; `voice_states` is a
 non-privileged intent the adapter already requests. `scripts/discord-voice-doctor.py`, run inside the
