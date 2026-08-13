@@ -52,7 +52,8 @@ change can be made in generated `config.yaml` or env vars, do it there.
 Every variable `spz-boot.sh` alone consumes carries an `SPZ_` prefix: `SPZ_MCP_URL`,
 `SPZ_MCP_TOKEN`, `SPZ_SOUL_MD`, `SPZ_CHANNEL_{TRAINER,CLINIC,MANAGER,CLZ,CONTENT,HOME,APPROVALS}`,
 `SPZ_ROUNDUP_ENABLED`, `SPZ_CONTENT_OPS_POLL`, `SPZ_ROLE`, `SPZ_PERSONA_CHANNEL`,
-`SPZ_RELAY_CHANNELS`. Cron jobs follow suit: `spz-daily-roundup`, `spz-content-ops-poll`.
+`SPZ_RELAY_CHANNELS`, `SPZ_STT_PROVIDER`, `SPZ_TTS_PROVIDER`, `SPZ_TTS_VOICE`, `SPZ_TTS_MODEL`.
+Cron jobs follow suit: `spz-daily-roundup`, `spz-content-ops-poll`.
 
 The names that stay upstream-spelled do so because the framework reads them, and renaming one fails
 silently — nothing errors, the adapter just never sees the value:
@@ -215,6 +216,67 @@ but it is not the local time of whoever writes the schedule — `0 8 * * *` is 8
 mid-afternoon at UTC+8. Nothing warns about this. If a persona check-in ever needs to land at a
 local hour, make the timezone a variable rather than hand-computing an offset, which would drift by
 an hour twice a year against a zone that doesn't observe DST.
+
+### Talking to an agent in a Discord voice channel
+
+Sit in a voice channel, then type `/voice join` in a text channel the bot answers in (`#spz` for
+SPZ). It connects, transcribes what you say, and speaks its replies back; `/voice leave` disconnects
+and `/voice off` mutes the speech without leaving. All of that is upstream — the adapter's
+`VoiceReceiver`, `gateway/run.py`'s `_handle_voice_channel_join`, `tools/transcription_tools.py` for
+STT and `tools/tts_tool.py` for TTS. The fork adds nothing but a provider for each, because **neither
+half picks a working one here by default**:
+
+| | Framework default | Why it fails in this image |
+|---|---|---|
+| STT | `local` (faster-whisper) | Not installed — `[all]` excludes the `voice` extra |
+| TTS | `edge` (edge-tts) | Not installed — `[all]` excludes it too |
+
+Both would fall through to `tools/lazy_deps.py`, which pip-installs into `/opt/hermes/.venv` — inside
+the immutable image layer, owned by root, while the gateway runs as the `hermes` user (the shim drops
+privileges with `s6-setuidgid`). The install fails, and even where it succeeded it would vanish on
+the next redeploy. That is the same reasoning the Dockerfile already applies to `hindsight-client`.
+
+So `spz-boot.sh` emits an `stt` and a `tts` block naming providers whose SDK is baked in.
+`openai==2.24.0` is a **core** dependency, and it drives all three usable paths — OpenAI STT, Groq STT
+(same SDK, different `base_url`), and OpenAI TTS. Setting `stt.provider` explicitly matters for a
+second reason: left unset, the auto-detect ladder is `local > groq > openai`, so it tries the missing
+local backend first.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SPZ_STT_PROVIDER` | `openai` | `openai` or `groq`. Groq's `whisper-large-v3-turbo` is the cheap/fast option. |
+| `SPZ_TTS_PROVIDER` | `openai` | Leave it. `edge`/`elevenlabs` are lazy-installed and will not work here. |
+| `SPZ_TTS_VOICE` | `alloy` | Any OpenAI voice — `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`. |
+| `SPZ_TTS_MODEL` | `gpt-4o-mini-tts` | |
+
+The block is **gated on a key being present** (`OPENAI_API_KEY`, `VOICE_TOOLS_OPENAI_KEY` or
+`GROQ_API_KEY`), following the same rule as every other instance-scoped feature here: the Railway
+variable is the switch. With no key set the generated `config.yaml` is byte-identical to what it was
+before this existed, so landing it changed nothing anywhere — verified by diffing the output against
+the pre-change script. Note `GROQ_API_KEY` alone enables the block but not TTS, which still needs an
+OpenAI key; STT-only is a legitimate setup (SPZ listens, answers in text) but is not the default.
+
+Four things deliberately *not* done:
+
+- **`voice.auto_tts` is not set.** That is the global "speak every reply" switch, and it would have
+  SPZ reading its ordinary text answers in `#spz` aloud. `/voice join` already flips that one chat to
+  voice mode and persists it to `gateway_voice_mode.json` on the volume, so the opt-in stays
+  per-channel and survives a restart.
+- **No Dockerfile change.** Voice *transport* already works: `discord.py[voice]` (which pulls PyNaCl
+  and `davey` for Discord's DAVE E2EE) arrives via the `messaging` extra the image installs, and
+  ffmpeg and libopus are already there. Only the two providers were missing.
+- **No per-persona scoping.** Any role that has a key gets the block, so a persona can be talked to
+  in voice on the same terms. What a persona *does* need is its text channel in
+  `DISCORD_ALLOWED_CHANNELS` — `/voice join` is typed in a text channel, and the whitelist gates
+  slash commands as well as messages.
+- **`VOICE_TIMEOUT` is left alone.** The adapter auto-disconnects after 300s of silence, and it is a
+  class attribute (`plugins/platforms/discord/adapter.py`), not config — changing it would mean
+  patching Python, which this fork does not do.
+
+Discord-side, the bot needs **Connect** and **Speak** on the voice channel; `voice_states` is a
+non-privileged intent the adapter already requests. `scripts/discord-voice-doctor.py`, run inside the
+container, checks every dependency, the opus load, and the bot's permissions in one pass — start
+there if it joins but neither hears nor speaks.
 
 ## Commands
 

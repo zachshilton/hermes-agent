@@ -292,6 +292,68 @@ if [ -z "${DISCORD_FREE_RESPONSE_CHANNELS}" ]; then
   fi
 fi
 
+# Live voice channels. `/voice join`, typed in a text channel while Zach is
+# sitting in a voice channel, connects this bot to that channel, transcribes what
+# he says (gateway/run.py _handle_voice_channel_input -> tools.transcription_tools)
+# and speaks the reply back (tools.tts_tool). All of it already exists upstream —
+# the only thing missing was that both halves need a provider named in
+# config.yaml, and neither picks a working one here by default.
+#
+# Both providers must be ones whose SDK is BAKED INTO THE IMAGE, which rules out
+# the framework's own defaults and is the whole reason this block is explicit:
+#
+#   - STT defaults to "local" (faster-whisper), and TTS defaults to "edge".
+#     Neither ships in the container. pyproject's [all] extra deliberately
+#     excludes the voice and edge-tts deps, and the Dockerfile installs
+#     `--extra all --extra messaging`, so both would fall to tools/lazy_deps.py
+#     at first use — a pip install into /opt/hermes/.venv, which is inside the
+#     immutable image layer and owned by root while the gateway runs as the
+#     hermes user (the shim drops privileges via s6-setuidgid). That install
+#     fails, and even where it succeeded it would be lost on every redeploy.
+#   - `openai==2.24.0` is a CORE dependency, so it is present. Both the OpenAI
+#     and the Groq STT paths drive it (Groq via base_url), as does OpenAI TTS.
+#
+# Hence: providers here, not a Dockerfile change. Setting stt.provider explicitly
+# also stops the auto-detect ladder (local > groq > openai) from silently trying
+# the missing local backend first.
+#
+# Gated on there being a key to use, following the same rule as every other
+# instance-scoped feature in this file: presence of the Railway variable is the
+# switch. No key, no block, and the generated config is unchanged from today.
+# Voice transport itself needs nothing further — discord.py[voice] (PyNaCl +
+# davey for DAVE E2EE) comes in via the messaging extra, and ffmpeg and libopus
+# are already in the image. Discord-side, the bot needs Connect + Speak on the
+# voice channel; scripts/discord-voice-doctor.py checks all of it from inside
+# the container.
+#
+# Deliberately NOT setting voice.auto_tts. That is the global "speak every
+# reply" switch, and it would have SPZ reading its text answers in #spz aloud.
+# `/voice join` already flips this chat to voice mode on its own and persists
+# that to gateway_voice_mode.json on the volume, so the opt-in stays per-channel
+# and survives a restart.
+SPZ_STT_PROVIDER="${SPZ_STT_PROVIDER:-openai}"
+SPZ_TTS_PROVIDER="${SPZ_TTS_PROVIDER:-openai}"
+SPZ_TTS_VOICE="${SPZ_TTS_VOICE:-alloy}"
+SPZ_TTS_MODEL="${SPZ_TTS_MODEL:-gpt-4o-mini-tts}"
+
+if [ -n "${OPENAI_API_KEY}" ] || [ -n "${VOICE_TOOLS_OPENAI_KEY}" ] || [ -n "${GROQ_API_KEY}" ]; then
+  # Quoted for the same reason everything else here is: this is read with
+  # yaml.safe_load (YAML 1.1), and an unquoted provider or voice name is one
+  # rename away from being coerced to something that isn't a string.
+  VOICE_BLOCK="stt:
+  enabled: true
+  provider: \"${SPZ_STT_PROVIDER}\"
+tts:
+  provider: \"${SPZ_TTS_PROVIDER}\"
+  openai:
+    model: \"${SPZ_TTS_MODEL}\"
+    voice: \"${SPZ_TTS_VOICE}\"
+"
+  echo "[spz-boot] Voice enabled (stt=${SPZ_STT_PROVIDER}, tts=${SPZ_TTS_PROVIDER}/${SPZ_TTS_VOICE})"
+else
+  VOICE_BLOCK=""
+fi
+
 # Omitted entirely rather than emitted empty when no channel ids are set — a
 # bare `channel_prompts:` key would parse as null, which resolve_channel_prompt
 # tolerates, but an absent block keeps the generated config honest about what
@@ -342,7 +404,7 @@ mcp_servers:
     headers:
       Authorization: "Bearer ${SPZ_MCP_TOKEN}"
     timeout: 180
-${PLATFORMS_BLOCK}
+${VOICE_BLOCK}${PLATFORMS_BLOCK}
 EOF
 
 if [ -n "${SPZ_SOUL_MD}" ]; then
