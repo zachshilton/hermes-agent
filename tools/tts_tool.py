@@ -986,6 +986,28 @@ def _generate_elevenlabs(text: str, output_path: str, tts_config: Dict[str, Any]
     voice_id = el_config.get("voice_id", DEFAULT_ELEVENLABS_VOICE_ID)
     model_id = el_config.get("model_id", DEFAULT_ELEVENLABS_MODEL_ID)
 
+    # Delivery rate. ElevenLabs carries this on voice_settings rather than as a
+    # top-level argument (unlike OpenAI's `speed`), and the API's usable band is
+    # roughly 0.7-1.2 — outside it the model distorts rather than simply
+    # speeding up, so clamp instead of forwarding whatever config says.
+    #
+    # Sent only when it differs from 1.0, so the default request is byte-for-byte
+    # what it was before this existed. Passed as a plain dict: the SDK's model
+    # coerces it, and an SDK too old to know the field ignores it rather than
+    # raising — which is the safe direction here, since a hard failure would take
+    # the whole spoken reply down over a rate tweak.
+    el_speed = float(el_config.get("speed", tts_config.get("speed", 1.0)) or 1.0)
+    convert_kwargs = {}
+    if el_speed != 1.0:
+        clamped = max(0.7, min(1.2, el_speed))
+        if clamped != el_speed:
+            logger.warning(
+                "TTS: elevenlabs speed %.2f outside the usable 0.7-1.2 band; using %.2f",
+                el_speed, clamped,
+            )
+        convert_kwargs["voice_settings"] = {"speed": clamped}
+        logger.info("TTS: elevenlabs speed %.2f", clamped)
+
     # Determine output format based on file extension
     if output_path.endswith(".ogg"):
         output_format = "opus_48000_64"
@@ -999,6 +1021,7 @@ def _generate_elevenlabs(text: str, output_path: str, tts_config: Dict[str, Any]
         voice_id=voice_id,
         model_id=model_id,
         output_format=output_format,
+        **convert_kwargs,
     )
 
     # audio_generator yields chunks -- write them all

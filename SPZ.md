@@ -60,9 +60,12 @@ There are exactly **two** Python exceptions, and the bar they had to clear is th
    "Keeping a voice conversation in the voice channel"). Taken only after confirming no config path
    existed — both behaviours were unconditional, and the agent has no tool that could route output
    to chat itself.
-2. Three lines in `tools/tts_tool.py` passing an `instructions` field to OpenAI TTS (see the voice
-   table below). The framework read `model`, `voice`, `base_url` and `speed` from config but had no
-   way to reach the style-steering parameter the `gpt-4o*-tts` models accept.
+2. Two additions in `tools/tts_tool.py`, both closing gaps where a delivery control existed in the
+   provider's API but not in the framework: an `instructions` field for OpenAI TTS (style steering
+   the `gpt-4o*-tts` models accept), and `voice_settings.speed` for ElevenLabs. The latter matters
+   more than it sounds — ElevenLabs carries rate on `voice_settings` rather than as a top-level
+   argument, so `_generate_elevenlabs` sent no rate at all and a slow-reading voice could not be
+   sped up by any means.
 
 Anything added here should meet the same test — no config path exists *and* the behaviour is
 actually wrong — and follow the same shape: read from `config.yaml`, default to the framework's
@@ -354,6 +357,7 @@ local backend first.
 | `SPZ_TTS_PROVIDER` | `openai` | `openai` or `elevenlabs` — see below. `edge` is still lazy-installed and will not work here. |
 | `SPZ_ELEVENLABS_MODEL_ID` | `eleven_flash_v2_5` | ElevenLabs only. `eleven_turbo_v2_5` and `eleven_multilingual_v2` trade latency for fidelity. |
 | `SPZ_ELEVENLABS_VOICE_ID` | unset | ElevenLabs only. A real id from the voice library — no default is invented here. |
+| `SPZ_ELEVENLABS_SPEED` | unset | ElevenLabs only, 0.7–1.2. **Not** `SPZ_TTS_SPEED`, which the OpenAI backend alone reads. |
 | `SPZ_TTS_VOICE` | `alloy` | Any OpenAI voice — `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`. `fable` is the British-accented male. |
 | `SPZ_TTS_MODEL` | `gpt-4o-mini-tts` | |
 | `SPZ_TTS_SPEED` | unset | Rate multiplier, clamped to 0.25–4.0. Omitted when unset. |

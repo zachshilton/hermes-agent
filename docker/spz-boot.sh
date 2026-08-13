@@ -440,6 +440,13 @@ SPZ_VOICE_SUPPRESS_TEXT="$(normalize_bool "${SPZ_VOICE_SUPPRESS_TEXT}" false SPZ
 SPZ_ELEVENLABS_MODEL_ID="${SPZ_ELEVENLABS_MODEL_ID:-eleven_flash_v2_5}"
 SPZ_ELEVENLABS_VOICE_ID="${SPZ_ELEVENLABS_VOICE_ID:-}"
 
+# Delivery rate, 0.7-1.2. Unset emits nothing, so the request is unchanged from
+# before this existed. Validated here rather than passed through, for the reason
+# SPZ_TTS_SPEED already is: tts_tool calls float() on it and a non-numeric raises
+# mid-reply. Note this is a DIFFERENT key from SPZ_TTS_SPEED — that one is read
+# only by the OpenAI backend, so setting it while on elevenlabs does nothing.
+SPZ_ELEVENLABS_SPEED="${SPZ_ELEVENLABS_SPEED:-}"
+
 # STT and TTS no longer share a credential, so they are gated separately. An
 # ElevenLabs key alone buys a voice that speaks but cannot listen; a Groq key
 # alone is the reverse. Emitting `stt.enabled: true` without a key it can use
@@ -486,6 +493,17 @@ if [ -n "${VOICE_STT_OK}" ] || [ -n "${VOICE_TTS_OK}" ]; then
       # Omitted rather than emitted empty when unset: the framework falls back
       # to its own default voice, whereas an empty string reaches the API as a
       # blank id.
+      if [ -n "${SPZ_ELEVENLABS_SPEED}" ]; then
+        case "${SPZ_ELEVENLABS_SPEED}" in
+          ''|*[!0-9.]*|*.*.*)
+            echo "[spz-boot] Warning: SPZ_ELEVENLABS_SPEED='${SPZ_ELEVENLABS_SPEED}' is not a number; ignoring" >&2
+            ;;
+          *)
+            VOICE_BLOCK="${VOICE_BLOCK}    speed: ${SPZ_ELEVENLABS_SPEED}
+"
+            ;;
+        esac
+      fi
       if [ -n "${SPZ_ELEVENLABS_VOICE_ID}" ]; then
         VOICE_BLOCK="${VOICE_BLOCK}    voice_id: \"${SPZ_ELEVENLABS_VOICE_ID}\"
 "
