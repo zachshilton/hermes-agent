@@ -177,10 +177,18 @@ Two consequences worth keeping:
 - **Any service that gets a voice key needs this**, which today means the only one — but the pin
   belongs in the generated config rather than a per-service Railway variable, so that it survives
   ever splitting out again.
-- **`HERMES_INFERENCE_PROVIDER` still overrides it** (`runtime_provider.py:547`, checked before the
-  auto path). That is the fastest way to unblock a live service without a redeploy, and it is what
-  to reach for first in an outage. `SPZ_INFERENCE_PROVIDER` exists only for genuinely moving off
-  Anthropic; leave it unset.
+- **`HERMES_INFERENCE_PROVIDER` does NOT override it, despite what this file used to say.**
+  `resolve_requested_provider` (`runtime_provider.py:535-551`) reads config.yaml `model.provider`
+  *before* the env var, and this script now always writes `model.provider` — so the env var is dead
+  on this deployment and reaching for it in an outage would waste the outage. The earlier claim was
+  written the same day the pin was added and was wrong from the moment it landed: the pin is exactly
+  what invalidated it.
+- **`SPZ_INFERENCE_PROVIDER` is the real lever**, since it is what `model.provider` is generated
+  from. Changing provider means setting it *and* `HERMES_MODEL` to a model id spelled the way that
+  provider expects — `hermes_cli/model_normalize.py:327-467` requires a `vendor/` prefix for
+  aggregators (`openrouter`, `nous`) and strips it for `anthropic`. A mismatch 404s on the first
+  message rather than failing at boot, which is the same shape as putting a voice name in
+  `SPZ_TTS_MODEL`.
 
 ### Scoping the toolsets, and why it is the biggest cost lever here
 

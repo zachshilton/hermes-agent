@@ -11,8 +11,8 @@ only the upstream guide would leave you editing a fork as though it were the fra
 
 @SPZ.md
 
-If that import did not expand, read `SPZ.md` before touching anything — it is short, and it is the
-only place the fork's own conventions are written down.
+If that import did not expand, read `SPZ.md` before touching anything — it is the only place the
+fork's own conventions are written down, and most are there because something broke here first.
 
 | File | Owner | Covers |
 |---|---|---|
