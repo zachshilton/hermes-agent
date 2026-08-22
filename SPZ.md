@@ -38,7 +38,8 @@ first two are still moving:
 
 The generated `config.yaml` is the whole fork surface at runtime. It contains exactly six things:
 `timezone` (hardcoded `Europe/London`), `model` (a **mapping** of `default` from `${HERMES_MODEL}`,
-defaulting to `anthropic/claude-sonnet-5`, and `provider` from `${SPZ_INFERENCE_PROVIDER}`,
+defaulting to `anthropic/claude-haiku-4-5` — see "Haiku is the default" below — and `provider`
+from `${SPZ_INFERENCE_PROVIDER}`,
 defaulting to `anthropic` — see "Pin the provider" below; it must not go back to a bare string), a
 `display.platforms.discord` block, the single `mcp_servers.spz`
 entry built from `SPZ_MCP_URL`/`SPZ_MCP_TOKEN` with `timeout: 180`, a `platform_toolsets` block
@@ -189,6 +190,51 @@ Two consequences worth keeping:
   aggregators (`openrouter`, `nous`) and strips it for `anthropic`. A mismatch 404s on the first
   message rather than failing at boot, which is the same shape as putting a voice name in
   `SPZ_TTS_MODEL`.
+
+### Haiku is the default, and what that trades away
+
+`HERMES_MODEL` defaults to `anthropic/claude-haiku-4-5`, not Sonnet. The agent's whole job on this
+deployment is reading the dashboard over MCP and answering in `#spz`: 16 MCP tools plus the scoped
+native set is roughly 7k tokens of schema, nowhere near Haiku's 200k window, and none of it needs a
+frontier model to dispatch.
+
+The economics are better than the published rates suggest, for a reason that is not on any pricing
+page. **Haiku 4.5 still uses the OLD tokenizer.** Sonnet 5 — and every other Claude 4.7-or-later
+model — counts roughly 30% more tokens for the same text, so Sonnet's effective rate on this
+workload is nearer `$2.60/$13.00` than the published `$2/$10`. Against Haiku's `$1/$5` that makes
+the real gap about **2.6x, not 2x**, and it is paid on every cron firing whether or not anyone is
+listening. Cache reads are half the price too (`$0.10` against `$0.20`).
+
+One thing genuinely moves the other way: **Haiku's hidden tool-use preamble is larger** — Anthropic
+bills roughly 496 tokens on Haiku 4.5 against 354 on Sonnet 5 with `tool_choice: auto` (588 against
+474 with `any`), on top of our own schemas. It rides every call and claws a little back. Haiku is
+still clearly cheaper; it is just not the full 2.6x.
+
+**What this gives up is one specific path, and it is worth knowing exactly which.** A free-typed
+`YES 1234` in `#approvals` is resolved by the AGENT, not by the dashboard: it calls
+`list_pending_approvals`, matches the code, then calls `resolve_pending_approval` — whose own
+description says approving *executes the original action*. A two-step chain ending in an exact-match
+argument with an irreversible consequence is precisely where a smaller model degrades first, and
+with several approvals pending the failure mode is approving the wrong one.
+
+Two things already contain that, which is why the default is Haiku anyway:
+
+- **The Discord buttons resolve the same approval deterministically**, in `api/discord-interactions.ts`,
+  with no model involved at all. Approve by button and Haiku never touches this.
+- **`reject_video`, `submit_video` and `mark_posted` are in `MANAGER_ALWAYS_GATED`** (`api/mcp.ts:101`),
+  so the model cannot take a destructive action unilaterally regardless of which model it is.
+
+**If the free-typed path ever picks a wrong code, do not revert the whole service.** The fix is a
+`platforms.discord.channel_overrides.<approvals-id>.model` block pinning a stronger model on
+`#approvals` alone. That is live, not aspirational — `gateway/run.py:3747-3782` looks the override up
+by chat id and applies it, priority `session /model` > channel override > this default — and
+`gateway/config.py:404-419` confirms `ChannelOverride` carries exactly model/provider/system_prompt.
+Note it cannot help a **cron** turn, which is not channel-scoped and always takes the service-wide
+model, so the daily roundup is composed by whatever `HERMES_MODEL` says.
+
+**Changing the default in this file only moves the fallback.** If Railway has `HERMES_MODEL` set
+explicitly, that wins and the default is never read — check the variable before concluding a model
+change did not take.
 
 ### Scoping the toolsets, and why it is the biggest cost lever here
 

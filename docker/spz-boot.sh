@@ -678,10 +678,31 @@ fi
 # ANTHROPIC_API_KEY branch and chose anthropic anyway.
 #
 # SPZ_INFERENCE_PROVIDER exists only as the escape hatch for genuinely moving
-# off Anthropic; leave it unset. Note the framework's own HERMES_INFERENCE_PROVIDER
-# still overrides this at runtime_provider.py:547 — it is checked before the
-# auto path — so a Railway variable remains the fastest way to unblock a live
-# service without a redeploy.
+# off Anthropic; leave it unset. HERMES_INFERENCE_PROVIDER does NOT override it,
+# despite what this comment claimed until now: resolve_requested_provider
+# (runtime_provider.py:535-551) reads config.yaml model.provider BEFORE the env
+# var, and this script always writes model.provider — so the env var is dead on
+# this deployment and reaching for it during an outage would waste the outage.
+# The claim was written the same day the pin was added and was wrong from the
+# moment it landed; the pin is exactly what invalidated it.
+#
+# THE DEFAULT IS HAIKU, not Sonnet. The agent's whole job here is reading the
+# dashboard over MCP and answering in #spz — 16 MCP tools plus a scoped native
+# set, well inside Haiku's 200k window — and Haiku 4.5 still uses the OLD
+# tokenizer, while Sonnet 5 and every other 4.7+ model count roughly 30% more
+# tokens for the same text. So the real gap is nearer 2.6x than the 2x the
+# published rates suggest, and it is paid on every cron firing whether or not
+# anyone is listening.
+#
+# What this gives up is stated plainly because it is not nothing: a free-typed
+# "YES 1234" in #approvals is resolved by the AGENT — list_pending_approvals,
+# match the code, then resolve_pending_approval, which executes the original
+# action — and that two-step exact-match chain is where a smaller model degrades
+# first. The Discord buttons resolve the same approval deterministically with no
+# model involved, so that path is unaffected. If the free-typed path ever picks
+# a wrong code, the fix is a channel_overrides block pinning a stronger model on
+# #approvals alone (gateway/run.py:3747-3782, priority: session /model >
+# channel override > this default) rather than reverting the whole service.
 #
 # Discord is the framework's most verbose display tier by default
 # (gateway/display_config.py's _TIER_HIGH), and this config previously set no
@@ -706,7 +727,7 @@ fi
 cat > "$HERMES_HOME/config.yaml" <<EOF
 timezone: "Europe/London"
 model:
-  default: "${HERMES_MODEL:-anthropic/claude-sonnet-5}"
+  default: "${HERMES_MODEL:-anthropic/claude-haiku-4-5}"
   provider: "${SPZ_INFERENCE_PROVIDER:-anthropic}"
 display:
   platforms:
