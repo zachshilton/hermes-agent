@@ -775,19 +775,34 @@ SPZ_ROUNDUP_GUARD="${SPZ_ROUNDUP_ENABLED}"
 if [ -z "${SPZ_ROUNDUP_GUARD}" ] && [ "${SPZ_ROLE}" = "spz" ]; then
   SPZ_ROUNDUP_GUARD="${DISCORD_ALLOWED_USERS}"
 fi
-if [ -n "${SPZ_ROUNDUP_GUARD}" ]; then
-  # One-time migrations, not manual steps. Each superseded name has to be
-  # removed explicitly, because the name check below only ever asks whether the
-  # CURRENT name exists — an old job it doesn't know about would sit there
-  # forever, still firing on its old schedule and delivery. `daily-roundup` was
-  # the SMS-era job; `daily-roundup-discord` is the pre-SPZ-naming one, which
-  # is otherwise a live duplicate that would post the roundup twice.
-  # Removing is safe to attempt on every boot — once gone the command just
-  # fails and is suppressed. `hermes cron remove` resolves by name as well as
-  # id (cron/jobs.py resolve_job_ref), so no id lookup is needed.
-  hermes cron remove daily-roundup >/dev/null 2>&1 || true
-  hermes cron remove daily-roundup-discord >/dev/null 2>&1 || true
+# Removals run UNCONDITIONALLY, outside the enable check below — the same shape
+# the content-ops poll uses further down, and for the same reason it had to be
+# given one. Cron jobs live in $HERMES_HOME, which is the Railway volume, so
+# they survive every redeploy. Nested inside the `if`, unsetting
+# SPZ_ROUNDUP_ENABLED only stopped the job being RECREATED and did nothing
+# about the one already there, which would keep posting a 12PM roundup into
+# #spz after its own switch was gone. That is not a hypothetical for this file:
+# it is exactly what happened to spz-content-ops-poll, and this block was the
+# last one still carrying the bug once that one was fixed.
+#
+# The two legacy names are one-time migrations, not manual steps. Each
+# superseded name has to be removed explicitly, because the name check below
+# only ever asks whether the CURRENT name exists — an old job it doesn't know
+# about would sit there forever, still firing on its old schedule and delivery.
+# `daily-roundup` was the SMS-era job; `daily-roundup-discord` is the
+# pre-SPZ-naming one, which is otherwise a live duplicate that would post the
+# roundup twice.
+#
+# Removing is safe to attempt on every boot — once gone the command just fails
+# and is suppressed. `hermes cron remove` resolves by name as well as id
+# (cron/jobs.py resolve_job_ref), so no id lookup is needed.
+hermes cron remove daily-roundup >/dev/null 2>&1 || true
+hermes cron remove daily-roundup-discord >/dev/null 2>&1 || true
+if [ -z "${SPZ_ROUNDUP_GUARD}" ]; then
+  hermes cron remove spz-daily-roundup >/dev/null 2>&1 || true
+fi
 
+if [ -n "${SPZ_ROUNDUP_GUARD}" ]; then
   if ! hermes cron list --all 2>&1 | grep -q "Name:      spz-daily-roundup"; then
     hermes cron create "0 12 * * *" \
       "Call get_daily_roundup_text, then post its exact returned text — no changes, additions, or commentary of your own." \
