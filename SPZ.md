@@ -33,8 +33,14 @@ first two are still moving:
   directly as root and bypasses the s6 entrypoint entirely (which is why `spz-boot.sh` does its own
   `chown` at the end).
 - `railway.json` — three lines, unchanged since the gateway invocation was first wired up.
-- `Dockerfile` — one line: `--extra tts-premium`, so the ElevenLabs SDK is baked in rather than
-  lazy-installed into an immutable layer. See "ElevenLabs" below.
+- `Dockerfile` — two lines, both forced by the deployment target rather than chosen.
+  `--extra tts-premium` bakes the ElevenLabs SDK in rather than lazy-installing it into an immutable
+  layer (see "ElevenLabs" below); and the upstream `VOLUME [ "/opt/data" ]` instruction is
+  **deleted**, because Railway's build pipeline rejects any Dockerfile containing one outright and
+  tells you to use a Railway Volume instead. Nothing is lost by that deletion — persistence at that
+  path comes from a real Railway Volume mounted there at deploy time, not from Docker's own volume
+  metadata — but it is the fork hunk most likely to be silently undone by an upstream merge, and it
+  fails the *build* rather than degrading at runtime, so it is not subtle when it goes.
 
 The generated `config.yaml` is the whole fork surface at runtime. It contains exactly six things:
 `timezone` (hardcoded `Europe/London`), `model` (a **mapping** of `default` from `${HERMES_MODEL}`,
@@ -71,6 +77,70 @@ There are exactly **two** Python exceptions, and the bar they had to clear is th
 Anything added here should meet the same test — no config path exists *and* the behaviour is
 actually wrong — and follow the same shape: read from `config.yaml`, default to the framework's
 existing behaviour, and keep the diff to hunks that are trivial to re-apply over an upstream merge.
+
+### How an upstream merge would be done, and why none ever has been
+
+That "trivial to re-apply" is a claim about an operation nobody here has performed, against
+machinery that does not exist yet. `git log --merges` is empty across all 43 commits on `main`, and
+`git remote -v` lists exactly one remote — `origin`, this fork. **There is no `upstream` remote
+configured**, so the first step is to make one:
+
+```bash
+git fetch --unshallow origin     # do this FIRST — see below
+git remote add upstream https://github.com/NousResearch/Hermes-Agent.git
+git fetch upstream
+```
+
+**The `--unshallow` is not optional, and it is the part that is invisible until it bites.** This
+working copy is a shallow clone: `git rev-parse --is-shallow-repository` answers `true`, and
+`.git/shallow` grafts the history at `3a1a3c7` ("add 5.6 (#61578)", rob-maron), which is why
+`git log` presents a 6205-file upstream snapshot as a parentless root commit rather than as one
+commit in a long upstream history. Nothing before that graft exists locally, so a three-way merge
+would be looking for a merge base in a history this repo does not have. Unshallow and the graft goes
+away; skip it and the failure surfaces as a merge that either refuses outright or resolves against
+the wrong base — neither a thing to start debugging at that moment. Note also that `origin`'s
+refspec is `+refs/heads/main:refs/remotes/origin/main`, `main` alone, so `upstream` needs its own
+fetch regardless.
+
+**The conflict surface is much smaller than the fork-touched list above suggests, and which half a
+file falls into follows entirely from who added it.** A file this fork created has no upstream
+counterpart to disagree with, so it can never conflict however large it grows; only a file that
+arrived in the upstream snapshot and was subsequently edited here can. `git log --diff-filter=A
+--oneline -- <path>` settles it per file, and the split is clean:
+
+| Fork-touched file | Added by | Can conflict? |
+|---|---|---|
+| `docker/spz-boot.sh` | this fork (`299a14c`) | No — fork-only, and 932 lines of it |
+| `SPZ.md` | this fork (`3af59e8`) | No |
+| `CLAUDE.md` | this fork (`331da16`) | No |
+| `railway.json` | this fork (`a166836`) | No |
+| `Dockerfile` | upstream root (`3a1a3c7`) | **Yes** |
+| `docker/stage2-hook.sh` | upstream root (`3a1a3c7`) | **Yes** |
+| `gateway/run.py` | upstream root (`3a1a3c7`) | **Yes** |
+| `tools/tts_tool.py` | upstream root (`3a1a3c7`) | **Yes** |
+
+That is a better result than it looks. The one file every behavioural fork commit touches —
+`spz-boot.sh`, the largest and by far the most edited thing here — sits in the half that cannot
+conflict at all, and so does this file. The entire conflictable surface is `git diff 3a1a3c7 HEAD`
+over the other four paths: **12 hunks, 181 insertions and 10 deletions**, of which the `Dockerfile`
+(the `--extra` line and the deleted `VOLUME`) and `stage2-hook.sh` (the chown safety net) halves are
+both settled and in code upstream is unlikely to be moving. Watch the `VOLUME` deletion specifically:
+it is the one hunk a merge can undo by *restoring* a line rather than by clobbering one of ours,
+which no conflict marker will point at.
+
+**So re-applying the two Python changes by hand is the expected outcome of a merge, not a sign one
+went wrong.** That is precisely why the bar above is set where it is, and why each change is shaped
+as a small helper plus call sites reading from `config.yaml` rather than as a rewrite of the
+function around it: take upstream's copy of `gateway/run.py` and `tools/tts_tool.py` wholesale
+(`git checkout --theirs`), then re-apply eight hunks you can read on one screen. Resolving a
+conflict *inside* upstream's own logic is the slower and more dangerous route, and nothing in those
+eight hunks is worth it.
+
+**None of this has been rehearsed.** With no merge ever having run, the first one is a diff against
+6205 upstream files rather than the routine catch-up the phrase "upstream merge" implies — budget
+for it as an exercise, and remember that `docker/spz-boot.sh` comes out of it with no test coverage
+either way (see "Verifying a `spz-boot.sh` change — nothing else does" below, which is the only
+thing that would catch a merge having broken it).
 
 ### Naming: `SPZ_` is for us, `DISCORD_*`/`HERMES_*` belong to the framework
 
@@ -123,9 +193,14 @@ Four conventions in `spz-boot.sh`, each of which has caused a silent failure:
   one already there, which kept firing hourly against a pipeline the dashboard had taken over. This
   is not hypothetical — it happened, and the symptom was a poll that survived the removal of its own
   switch. `hermes cron remove` on an absent job fails harmlessly, so an unconditional removal costs
-  nothing. **`spz-daily-roundup` still has this shape**: its removals sit inside the
-  `SPZ_ROUNDUP_ENABLED` guard, so unsetting that variable will strand the 12PM job the same way.
-  Fix it the same way before relying on that switch.
+  nothing. **`spz-daily-roundup` was the last block still carrying this shape, and no longer is**:
+  the two legacy-name removals now run unconditionally, and a separate
+  `if [ -z "${SPZ_ROUNDUP_GUARD}" ]` removes `spz-daily-roundup` itself when the switch is off —
+  the content-ops poll's shape exactly, arrived at the same way. Verified with the harness below:
+  boot once with `SPZ_ROUNDUP_ENABLED` set, then again with it (and `DISCORD_ALLOWED_USERS`, which
+  it still falls back to) unset, and the second boot logs `hermes cron remove spz-daily-roundup`,
+  leaving the poll as the only job. The rule stays stated as a rule because it governs the next
+  block added here, not because anything is still outstanding.
 - **Anything YAML 1.1 would coerce must stay quoted** in the emitted config, because it is read with
   `yaml.safe_load`. Two live instances, both of which failed silently: Discord channel ids unquoted
   parse as ints, and every `channel_prompts` lookup (which keys on the adapter's string id) misses;
@@ -219,9 +294,11 @@ with several approvals pending the failure mode is approving the wrong one.
 
 Two things already contain that, which is why the default is Haiku anyway:
 
-- **The Discord buttons resolve the same approval deterministically**, in `api/discord-interactions.ts`,
-  with no model involved at all. Approve by button and Haiku never touches this.
-- **`reject_video`, `submit_video` and `mark_posted` are in `MANAGER_ALWAYS_GATED`** (`api/mcp.ts:101`),
+- **The Discord buttons resolve the same approval deterministically**, in the dashboard repo's
+  `api/discord-interactions.ts`, with no model involved at all. Approve by button and Haiku never
+  touches this.
+- **`reject_video`, `submit_video` and `mark_posted` are in `MANAGER_ALWAYS_GATED`**
+  (`api/mcp.ts:101`, also in the dashboard repo — there is no `api/` here),
   so the model cannot take a destructive action unilaterally regardless of which model it is.
 
 **If the free-typed path ever picks a wrong code, do not revert the whole service.** The fix is a
@@ -390,13 +467,15 @@ local backend first.
 | `SPZ_TTS_SPEED` | unset | Rate multiplier, clamped to 0.25–4.0. Omitted when unset. |
 | `SPZ_TTS_INSTRUCTIONS` | unset | Free-text delivery direction, e.g. "Refined British butler. Measured, formal, dry." Omitted when unset. |
 
-#### ElevenLabs, and the one Dockerfile change this fork has made
+#### ElevenLabs, and the `uv sync` line this fork has changed
 
 OpenAI's voices read as synthetic and are slow enough to be felt in a spoken exchange, so
 `SPZ_TTS_PROVIDER=elevenlabs` is the realism/latency option. It needs `ELEVENLABS_API_KEY` and a
 `SPZ_ELEVENLABS_VOICE_ID` from the voice library.
 
-This is the **only Dockerfile change** in the fork: `--extra tts-premium` on the `uv sync` line. The
+This is one of the fork's **two** Dockerfile changes: `--extra tts-premium` on the `uv sync` line.
+(The other is the deleted `VOLUME` instruction, which has nothing to do with voice — see the
+fork-touched file list near the top.) The
 reasoning is the one the Dockerfile already applies to `hindsight-client` — `tools/lazy_deps.py`
 would pip-install the SDK into `/opt/hermes/.venv`, inside the immutable image layer, owned by root
 while the gateway runs as `hermes`. The install fails, and would vanish on the next redeploy even
@@ -563,18 +642,122 @@ a temp `HERMES_HOME` and a stubbed `hermes` earlier on `PATH`.
 Put a stub `hermes` (log `$*`, `exit 0`) and a stub `chown` (`exit 0`, since there's no `hermes`
 user locally) in a temp dir, then run the script with that dir prepended to `PATH` and `HERMES_HOME`
 pointed at an empty temp dir. The final `exec hermes gateway run` lands on the stub, so the script
-exits cleanly and leaves the two generated files behind to inspect. Check all five:
+exits cleanly and leaves the two generated files behind to inspect.
 
-- **Both role paths.** `SPZ_ROLE=<persona>` and the default `spz` take different branches almost
-  everywhere. A persona emits the fleet roster into `SOUL.md` and logs "admits messages from other
-  agents"; `spz` emits neither and instead derives the free-response list. Still worth running both
-  precisely *because* Railway no longer does — since the collapse the persona path is exercised only
-  by hand, so a change that breaks it will not surface until someone tries to split out again.
-- **Self-exclusion.** A persona's roster must contain the other three channel ids and *not* its own.
-- **Quoted scalars.** `grep '"' config.yaml` — the `channel_prompts` keys must come out as `"111"`,
-  not `111`, and `tool_progress` as `"off"`, not `off`. Unquoted, the ids parse as ints and every
-  lookup misses; unquoted, `off` parses as `False` and the display setting is ignored. Both silent.
-- **The toolsets block.** `platform_toolsets` must carry both a `discord` and a `cron` key. `cron`
+That is the whole harness, and it is written out below rather than described because a recipe nobody
+runs is exactly the failure this section exists to prevent. Paste it into Git Bash from anywhere in
+the repo; it prints one labelled section per check and exits 0 when they all pass. **The stub
+`hermes` keeps a fake cron store inside `$HERMES_HOME`** rather than merely logging, which is the
+one embellishment on the prose above and is load-bearing: without it the existence check always sees
+an empty fleet, every job is created on every boot, and "the second run must not create a duplicate"
+cannot be checked at all.
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+
+# --- the harness: a stub `hermes` and `chown` earlier on PATH ---------------
+STUB="$(mktemp -d)"; PATH="$STUB:$PATH"; export PATH
+printf '#!/bin/sh\nexit 0\n' > "$STUB/chown"
+cat > "$STUB/hermes" <<'STUB_EOF'
+#!/bin/sh
+# Logs every call, and models the cron store on the Railway volume, so that
+# "the second boot must not create a duplicate" is checkable, not assumed.
+echo "hermes $*" >> "$STUB_LOG"
+JOBS="$HERMES_HOME/.stub-cron-jobs"
+case "$1 $2" in
+  "cron list")   [ -f "$JOBS" ] && sed 's/^/Name:      /' "$JOBS"; exit 0 ;;
+  "cron create") while [ $# -gt 0 ]; do
+                   if [ "$1" = "--name" ]; then echo "$2" >> "$JOBS"; break; fi
+                   shift
+                 done; exit 0 ;;
+  "cron remove") grep -qxF "$3" "$JOBS" 2>/dev/null || exit 1  # absent => fail, as the real CLI does
+                 grep -vxF "$3" "$JOBS" > "$JOBS.t"; mv "$JOBS.t" "$JOBS"; exit 0 ;;
+esac
+exit 0
+STUB_EOF
+chmod +x "$STUB/hermes" "$STUB/chown"
+
+# $1 = a label for this boot's log; everything else comes from the caller's env.
+boot() { STUB_LOG="$HERMES_HOME/$1.log"; export STUB_LOG; : > "$STUB_LOG"
+         sh docker/spz-boot.sh; }
+
+MCP="SPZ_MCP_URL=https://example.invalid/mcp SPZ_MCP_TOKEN=tok"
+
+# --- 1. the spz role, the live shape, booted twice into one HERMES_HOME -----
+SPZ="$(mktemp -d)"
+( export HERMES_HOME="$SPZ" $MCP SPZ_SOUL_MD='You are SPZ.' \
+    SPZ_RELAY_CHANNELS=none \
+    SPZ_CHANNEL_HOME=111111111111111111 SPZ_CHANNEL_APPROVALS=222222222222222222 \
+    SPZ_ROUNDUP_ENABLED=1 SPZ_CONTENT_OPS_POLL=1
+  boot spz1; cp "$SPZ/config.yaml" "$SPZ/config.1.yaml"; boot spz2 )
+
+echo "== IDEMPOTENCY: config.yaml identical across two boots =="
+diff "$SPZ/config.1.yaml" "$SPZ/config.yaml" && echo "  OK"
+echo "== IDEMPOTENCY: one job per name, not two =="; sort "$SPZ/.stub-cron-jobs"
+echo "== boot 2 cron calls (remove+create for the poll; no second roundup create) =="
+grep '^hermes cron' "$SPZ/spz2.log" | cut -c1-70
+echo "== TOOLSETS: both a discord and a cron key; cronjob rides the poll flag =="
+sed -n '/^platform_toolsets:/,/^[a-z]/p' "$SPZ/config.yaml"
+echo "== QUOTED SCALARS =="; grep '"' "$SPZ/config.yaml"
+
+# --- 2. the roundup switch OFF: the job must be REMOVED, not merely not made -
+( export HERMES_HOME="$SPZ" $MCP SPZ_RELAY_CHANNELS=none SPZ_CONTENT_OPS_POLL=1 \
+    DISCORD_ALLOWED_USERS=   # the pre-rename fallback; leave it set and the switch is inert
+  boot spzoff )
+echo "== ROUNDUP OFF: spz-daily-roundup removed unconditionally =="
+grep '^hermes cron remove spz-daily-roundup' "$SPZ/spzoff.log" || echo "  MISSING — the bug is back"
+echo "== ROUNDUP OFF: remaining jobs =="; sort "$SPZ/.stub-cron-jobs"
+
+# --- 3. a persona role -------------------------------------------------------
+P="$(mktemp -d)"
+( export HERMES_HOME="$P" $MCP SPZ_SOUL_MD='You are The Trainer.' \
+    SPZ_ROLE=trainer SPZ_PERSONA_CHANNEL=333333333333333333 \
+    SPZ_CHANNEL_TRAINER=333333333333333333 SPZ_CHANNEL_CLINIC=444444444444444444 \
+    SPZ_CHANNEL_MANAGER=555555555555555555 SPZ_CHANNEL_CLZ=666666666666666666
+  boot persona )
+echo "== SELF-EXCLUSION: the other three ids, never 333333333333333333 =="
+grep 'send_message with target' "$P/SOUL.md"
+echo "== persona: no roundup created =="
+grep '^hermes cron create' "$P/persona.log" || echo "  OK: none"
+
+# --- 4. relays on — the only shape that still emits channel_prompts ----------
+R="$(mktemp -d)"
+( export HERMES_HOME="$R" $MCP SPZ_CHANNEL_TRAINER=777777777777777777
+  boot relay )
+echo "== QUOTED SCALARS: channel_prompts keys must be \"777...\", not 777... =="
+grep -A1 'channel_prompts:' "$R/config.yaml" | cut -c1-60
+
+# --- 5. the way back: `full` must omit the key ALTOGETHER --------------------
+F="$(mktemp -d)"
+( export HERMES_HOME="$F" $MCP SPZ_RELAY_CHANNELS=none \
+    SPZ_TOOLSETS=full SPZ_CRON_TOOLSETS=full
+  boot full )
+echo "== FULL: platform_toolsets must be absent, not empty =="
+grep -q platform_toolsets "$F/config.yaml" && echo "  FAIL: key emitted" || echo "  OK: absent"
+```
+
+What each labelled section is actually asking, and why none of the five can be dropped:
+
+- **Both role paths** — blocks 1 and 3. `SPZ_ROLE=<persona>` (the script accepts `trainer`,
+  `clinic`, `manager`, `clz`; anything unrecognized warns and is treated as a persona) and the
+  default `spz` take different branches almost everywhere. A persona emits the fleet roster into
+  `SOUL.md` and logs `Role trainer admits messages from other agents`; `spz` emits neither and
+  instead logs `Free-response channels derived: …`. Both lines appear in the run above, and their
+  absence is the check. Still worth running both precisely *because* Railway no longer does —
+  since the collapse the persona path is exercised only by hand, so a change that breaks it will not
+  surface until someone tries to split out again.
+- **Self-exclusion** — block 3. A persona's roster must contain the other three channel ids and
+  *not* its own, which is why the trainer run passes `333…` as both `SPZ_PERSONA_CHANNEL` and
+  `SPZ_CHANNEL_TRAINER`: that is the arrangement in which a self-exclusion bug would show.
+- **Quoted scalars** — `grep '"' config.yaml`, in blocks 1 and 4. The `channel_prompts` keys must
+  come out as `"111"`, not `111`, and `tool_progress` as `"off"`, not `off`. Unquoted, the ids parse
+  as ints and every lookup misses; unquoted, `off` parses as `False` and the display setting is
+  ignored. Both silent. Note that block 1 cannot check the first half of that at all — the live
+  shape sets `SPZ_RELAY_CHANNELS=none`, so no `channel_prompts` block is emitted and the grep passes
+  vacuously. That is the entire reason block 4 exists: it turns one relay back on so there is a key
+  to look at.
+- **The toolsets block** — blocks 1 and 5. `platform_toolsets` must carry both a `discord` and a
+  `cron` key. `cron`
   is a separate platform key with its own default, so a run that narrows `discord` alone leaves
   every scheduled turn still paying for the full bundle — the bigger of the two savings, lost with
   nothing in the config looking wrong. `cronjob` must appear in the `discord` list only where
@@ -584,11 +767,13 @@ exits cleanly and leaves the two generated files behind to inspect. Check all fi
   And `SPZ_TOOLSETS=full SPZ_CRON_TOOLSETS=full` must leave the key out of the file altogether: an
   emitted key whose list is empty resolves to a platform with no native tools at all, the opposite
   of what `full` promises, so the way back has to be checked as an absence rather than assumed.
-- **Idempotency.** Run it twice against the same `HERMES_HOME` and diff `config.yaml`; it must be
-  byte-identical, and the second run must not create a duplicate cron job. Note that "no duplicate"
-  is not "no churn": `spz-content-ops-poll` and `spz-persona-checkin` deliberately remove and
-  recreate themselves on every boot (see the rule above), so expect a remove+create pair for each
-  in the stub log — one job at the end is the check, not one create.
+- **Idempotency** — block 1, which is why it boots twice into one `HERMES_HOME`. `config.yaml`
+  must be byte-identical across the two, and the second run must not create a duplicate cron job.
+  Note that "no duplicate" is not "no churn": `spz-content-ops-poll` and `spz-persona-checkin`
+  deliberately remove and recreate themselves on every boot (see the rule above), so expect a
+  remove+create pair for each in the stub log — the check is `sort "$SPZ/.stub-cron-jobs"` showing
+  one line per name at the end, not one create in the log. `spz-daily-roundup` is the opposite
+  shape: created by name check, so boot 2 should show `hermes cron list --all` and no second create.
 
 Keep it **POSIX sh**. The shebang is `#!/bin/sh` and `railway.json` invokes it as
 `sh /opt/hermes/docker/spz-boot.sh`, so bashisms — `[[ ]]`, arrays, `local`, `+=` — break it in the
