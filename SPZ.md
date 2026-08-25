@@ -81,7 +81,7 @@ existing behaviour, and keep the diff to hunks that are trivial to re-apply over
 ### How an upstream merge would be done, and why none ever has been
 
 That "trivial to re-apply" is a claim about an operation nobody here has performed, against
-machinery that does not exist yet. `git log --merges` is empty across all 43 commits on `main`, and
+machinery that does not exist yet. `git log --merges` is empty across all 45 commits on `main`, and
 `git remote -v` lists exactly one remote — `origin`, this fork. **There is no `upstream` remote
 configured**, so the first step is to make one:
 
@@ -102,6 +102,26 @@ the wrong base — neither a thing to start debugging at that moment. Note also 
 refspec is `+refs/heads/main:refs/remotes/origin/main`, `main` alone, so `upstream` needs its own
 fetch regardless.
 
+**The graft commit is not the fork point, and diffing against it is the mistake this section used to
+invite.** Seven upstream commits follow `3a1a3c7` — the GPT-5.6 registration series, authored by
+Kshitij Kapoor and rob-maron, touching `agent/model_metadata.py`, `agent/usage_pricing.py`, four
+files under `hermes_cli/`, two under `tests/hermes_cli/`, and `website/static/api/model-catalog.json`.
+None of it is ours. **The true fork point is `111544d`**, the last commit not authored by Zach
+Shilton, and `git log --format='%h %an' | grep -v 'Zach Shilton' | head -1` is how to re-derive it
+after the next upstream catch-up rather than trusting this hash forever. The difference is not
+cosmetic:
+
+| Baseline | Reports | Verdict |
+|---|---|---|
+| `git diff 3a1a3c7 HEAD` | 20 files, 2305 insertions | Wrong — sweeps in ten files of pure upstream work |
+| `git diff 111544d HEAD` | 9 files, 2003 insertions | The fork's own surface |
+
+Run the first one unrestricted and `usage_pricing.py`, `models.py` and the model catalog look
+fork-touched; re-applying those over a merge would be re-applying upstream's own commits back on top
+of upstream. The four-path figure below survives the correction — `git diff` over those paths is
+byte-identical from either baseline, because none of the seven commits touched them — but the
+*habit* of reaching for `3a1a3c7` does not.
+
 **The conflict surface is much smaller than the fork-touched list above suggests, and which half a
 file falls into follows entirely from who added it.** A file this fork created has no upstream
 counterpart to disagree with, so it can never conflict however large it grows; only a file that
@@ -118,11 +138,12 @@ arrived in the upstream snapshot and was subsequently edited here can. `git log 
 | `docker/stage2-hook.sh` | upstream root (`3a1a3c7`) | **Yes** |
 | `gateway/run.py` | upstream root (`3a1a3c7`) | **Yes** |
 | `tools/tts_tool.py` | upstream root (`3a1a3c7`) | **Yes** |
+| `.gitignore` | upstream root (`3a1a3c7`) | **Yes** — three lines, ignoring `.claude/` |
 
 That is a better result than it looks. The one file every behavioural fork commit touches —
 `spz-boot.sh`, the largest and by far the most edited thing here — sits in the half that cannot
-conflict at all, and so does this file. The entire conflictable surface is `git diff 3a1a3c7 HEAD`
-over the other four paths: **12 hunks, 181 insertions and 10 deletions**, of which the `Dockerfile`
+conflict at all, and so does this file. The entire conflictable surface is `git diff 111544d HEAD`
+over the other four paths: **11 hunks, 181 insertions and 10 deletions**, of which the `Dockerfile`
 (the `--extra` line and the deleted `VOLUME`) and `stage2-hook.sh` (the chown safety net) halves are
 both settled and in code upstream is unlikely to be moving. Watch the `VOLUME` deletion specifically:
 it is the one hunk a merge can undo by *restoring* a line rather than by clobbering one of ours,
@@ -229,7 +250,8 @@ without first adding that layer upstream.
 the one outage this fork has caused itself, so it is worth stating exactly.
 
 With no provider pinned anywhere, the framework auto-detects one. The precedence is spelled out in
-a comment in `hermes_cli/auth.py` (~line 1705): **2.** `config.yaml` `model.provider`, **3.** the
+a comment in `hermes_cli/auth.py` (~line 1718, with the full ladder in the docstring at
+1636-1643): **2.** `config.yaml` `model.provider`, **3.** the
 `OPENAI_API_KEY`/`OPENROUTER_API_KEY` env keys, **5.** provider-specific env keys. So
 `OPENAI_API_KEY` **outranks** `ANTHROPIC_API_KEY` and returns `openrouter`. With no
 `OPENROUTER_API_KEY` set, every request then goes out with no Authorization header, and OpenRouter
@@ -269,9 +291,15 @@ Two consequences worth keeping:
 ### Haiku is the default, and what that trades away
 
 `HERMES_MODEL` defaults to `anthropic/claude-haiku-4-5`, not Sonnet. The agent's whole job on this
-deployment is reading the dashboard over MCP and answering in `#spz`: 16 MCP tools plus the scoped
-native set is roughly 7k tokens of schema, nowhere near Haiku's 200k window, and none of it needs a
-frontier model to dispatch.
+deployment is reading the dashboard over MCP and answering in `#spz`: 40 MCP tools plus the scoped
+native set, nowhere near Haiku's 200k window, and none of it needs a frontier model to dispatch.
+
+**Count the tools, not the `registerTool` calls.** This said 16 for a long time, which is the number
+of call sites in the dashboard repo's `api/mcp.ts` — but one of them sits inside a
+`for (const schema of TOOL_SCHEMAS)` loop that registers the 25 entries of `TOOLS` in
+`api/_lib/spzAgent.ts`. The real exposure is 15 static + 25 dynamic = **40**, and the schema block is
+nearer 4k tokens than the 7k claimed here. Verified by counting both directly, not by reading the
+grep count off the registration site.
 
 The economics are better than the published rates suggest, for a reason that is not on any pricing
 page. **Haiku 4.5 still uses the OLD tokenizer.** Sonnet 5 — and every other Claude 4.7-or-later
@@ -604,6 +632,23 @@ there if it joins but neither hears nor speaks.
 ## Commands
 
 Run these from Git Bash on this Windows machine (`scripts/run_tests.sh` is POSIX sh).
+
+**First, a trap that silently corrupts every search here.** `.claude/worktrees/` holds a *complete
+second copy of this repo* — 2938 Python files at the time of writing — left behind by an agent
+worktree. It is gitignored (that is the whole `.gitignore` hunk above), so `git grep` is clean, but
+`grep -r` and `find` are not: `.claude` sorts before every real directory, so the stale copy comes
+back **first**.
+
+```
+$ grep -rln "resolve_requested_provider" --include=*.py .
+./.claude/worktrees/agent-.../hermes_cli/runtime_provider.py   <- stale copy, returned first
+./hermes_cli/runtime_provider.py                                <- the file you actually want
+```
+
+Editing the wrong one fails silently in the worst way: the change is real, the file is right, and
+nothing you deploy ever contains it. Use `git grep`, or exclude it explicitly
+(`grep -r --exclude-dir=.claude`, `rg` honours the ignore file already). Deleting the worktree is
+also fine — nothing references it.
 
 ```bash
 # Tests — ALWAYS via the wrapper, never bare pytest. It enforces CI parity:
