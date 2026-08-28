@@ -291,15 +291,16 @@ Two consequences worth keeping:
 ### Haiku is the default, and what that trades away
 
 `HERMES_MODEL` defaults to `anthropic/claude-haiku-4-5`, not Sonnet. The agent's whole job on this
-deployment is reading the dashboard over MCP and answering in `#spz`: 40 MCP tools plus the scoped
+deployment is reading the dashboard over MCP and answering in `#spz`: 38 MCP tools plus the scoped
 native set, nowhere near Haiku's 200k window, and none of it needs a frontier model to dispatch.
 
 **Count the tools, not the `registerTool` calls.** This said 16 for a long time, which is the number
 of call sites in the dashboard repo's `api/mcp.ts` — but one of them sits inside a
 `for (const schema of TOOL_SCHEMAS)` loop that registers the 25 entries of `TOOLS` in
-`api/_lib/spzAgent.ts`. The real exposure is 15 static + 25 dynamic = **40**, and the schema block is
+`api/_lib/spzAgent.ts`. The real exposure is 13 static + 25 dynamic = **38**, and the schema block is
 nearer 4k tokens than the 7k claimed here. Verified by counting both directly, not by reading the
-grep count off the registration site.
+grep count off the registration site. It was 15 + 25 = 40 until `list_pending_approvals` and
+`resolve_pending_approval` went with the approval queue.
 
 The economics are better than the published rates suggest, for a reason that is not on any pricing
 page. **Haiku 4.5 still uses the OLD tokenizer.** Sonnet 5 — and every other Claude 4.7-or-later
@@ -313,29 +314,38 @@ bills roughly 496 tokens on Haiku 4.5 against 354 on Sonnet 5 with `tool_choice:
 474 with `any`), on top of our own schemas. It rides every call and claws a little back. Haiku is
 still clearly cheaper; it is just not the full 2.6x.
 
-**What this gives up is one specific path, and it is worth knowing exactly which.** A free-typed
-`YES 1234` in `#approvals` is resolved by the AGENT, not by the dashboard: it calls
-`list_pending_approvals`, matches the code, then calls `resolve_pending_approval` — whose own
-description says approving *executes the original action*. A two-step chain ending in an exact-match
-argument with an irreversible consequence is precisely where a smaller model degrades first, and
-with several approvals pending the failure mode is approving the wrong one.
+**What this gives up changed shape when the approval queue was removed, and it got bigger.** This
+section used to name one path: a free-typed `YES 1234` in `#approvals`, where the AGENT — not the
+dashboard — called `list_pending_approvals`, matched the code, then called
+`resolve_pending_approval`, whose own description said approving *executes the original action*. A
+two-step chain ending in an exact-match argument with an irreversible consequence is precisely where
+a smaller model degrades first. That path is gone.
 
-Two things already contain that, which is why the default is Haiku anyway:
+**So are both of the things this file said contained it.** The Discord Approve/Deny buttons
+(`api/discord-interactions.ts` in the dashboard repo) resolved an approval deterministically with no
+model involved at all — that route is deleted outright. And `reject_video`, `submit_video` and
+`mark_posted` sat in `MANAGER_ALWAYS_GATED`, so no model could take a destructive action
+unilaterally — that set is deleted too, along with `UNGATED_SPZ_TOOLS` and the whole gate. **Every
+MCP tool now executes the moment the agent calls it**, `submit_video` — a real, irreversible OneUp
+publish — included.
 
-- **The Discord buttons resolve the same approval deterministically**, in the dashboard repo's
-  `api/discord-interactions.ts`, with no model involved at all. Approve by button and Haiku never
-  touches this.
-- **`reject_video`, `submit_video` and `mark_posted` are in `MANAGER_ALWAYS_GATED`**
-  (`api/mcp.ts:101`, also in the dashboard repo — there is no `api/` here),
-  so the model cannot take a destructive action unilaterally regardless of which model it is.
+The exposure is therefore no longer picking the wrong code out of several pending approvals. It is a
+wrong `submit_video`, with nothing behind it: the tool schema and whichever model `HERMES_MODEL`
+names are the only things in front of an irreversible publish. That is a stronger argument for
+revisiting this default than anything this section carried before. It is written down rather than
+acted on because the cost case below is unchanged and the choice is Zach's — but the risk half of
+the trade is materially worse than it was when Haiku was chosen, and nothing here should read as
+though it still balances the way it did.
 
-**If the free-typed path ever picks a wrong code, do not revert the whole service.** The fix is a
-`platforms.discord.channel_overrides.<approvals-id>.model` block pinning a stronger model on
-`#approvals` alone. That is live, not aspirational — `gateway/run.py:3747-3782` looks the override up
-by chat id and applies it, priority `session /model` > channel override > this default — and
+**If it does take a wrong action, the lever is a channel override, not a service revert.** A
+`platforms.discord.channel_overrides.<spz-id>.model` block pins a stronger model on `#spz` alone.
+That is live, not aspirational — `gateway/run.py:3747-3782` looks the override up by chat id and
+applies it, priority `session /model` > channel override > this default — and
 `gateway/config.py:404-419` confirms `ChannelOverride` carries exactly model/provider/system_prompt.
-Note it cannot help a **cron** turn, which is not channel-scoped and always takes the service-wide
-model, so the daily roundup is composed by whatever `HERMES_MODEL` says.
+Two limits, and the first is new: `#spz` is now the only channel SPZ converses in, so an override
+there is close to service-wide rather than the narrow scalpel `#approvals` used to be. And it cannot
+help a **cron** turn at all — those are not channel-scoped and always take the service-wide model,
+so the daily roundup is composed by whatever `HERMES_MODEL` says.
 
 **Changing the default in this file only moves the fallback.** If Railway has `HERMES_MODEL` set
 explicitly, that wins and the default is never read — check the variable before concluding a model
@@ -391,8 +401,9 @@ interactive `#spz` agent cheap.
 ### One container, and the fleet that used to be four
 
 SPZ runs as a single Railway service, `hermes-spz`, with one Discord bot answering `#spz` and
-`#approvals`. It owns both crons: the 12PM roundup and the hourly content-ops poll. That is the
-whole deployment.
+`#approvals` — though `#approvals` now has nothing to carry, since the dashboard's approval queue
+was removed and no longer posts requests there (see the note on `SPZ_CHANNEL_APPROVALS` below). It
+owns both crons: the 12PM roundup and the hourly content-ops poll. That is the whole deployment.
 
 It was not always. For a stretch each persona — The Trainer, The Medical Team, The Manager, CLZ —
 was moving onto its own Railway service with its own bot and its own `SOUL.md`, scoped to its own
@@ -421,13 +432,20 @@ What must not stay is prose describing it as live, which is why this section exi
 `SPZ_RELAY_CHANNELS` must remain set to the literal `none`. Deleting it does not mean "no relays":
 `spz-boot.sh` reads an unset value on the `spz` role as *all four*, so removing the variable during
 a tidy-up restores every persona relay at once, with the boot log cheerfully announcing the derived
-channels. And `SPZ_CHANNEL_HOME` and `SPZ_CHANNEL_APPROVALS` must survive any cleanup of the other
-`SPZ_CHANNEL_*` ids, because with no relays left they are the *only* remaining source of
-`DISCORD_FREE_RESPONSE_CHANNELS`. Delete them and `#approvals` silently starts requiring an
-`@mention`, which means a free-typed `YES <code>` is never seen — the exact failure this file has
-warned about since the relay list was introduced. Verified by hand: with `SPZ_RELAY_CHANNELS=none`
-and both ids set, the boot logs `Free-response channels derived: <approvals>,<spz>`; with the ids
-removed it logs nothing at all and the variable is never exported.
+channels. And **`SPZ_CHANNEL_HOME` must survive any cleanup of the other `SPZ_CHANNEL_*` ids**,
+because with no relays left it and `SPZ_CHANNEL_APPROVALS` are the *only* remaining source of
+`DISCORD_FREE_RESPONSE_CHANNELS`. Remove every id and the variable is never exported at all, at
+which point `#spz` silently starts requiring an `@mention` — SPZ stops answering the one channel it
+exists to answer, and nothing errors. Verified by hand: with `SPZ_RELAY_CHANNELS=none` and both ids
+set, the boot logs `Free-response channels derived: <approvals>,<spz>`; with the ids removed it logs
+nothing at all and the variable is never exported.
+
+**`SPZ_CHANNEL_APPROVALS` is now the one that can go, and only it.** The dashboard's approval queue
+is deleted — no `pendingActions.ts`, no Approve/Deny buttons, no `list_pending_approvals` /
+`resolve_pending_approval` — so nothing posts to `#approvals` and there is no free-typed `YES <code>`
+left to miss. Dropping the variable costs a free-response channel nobody writes to. Dropping
+`SPZ_CHANNEL_HOME` alongside it is the failure above. The pairing this file used to insist on has
+become a single dependency, and the two halves must not be tidied up together.
 
 #### Why the fleet was shaped the way it was
 
