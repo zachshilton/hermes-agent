@@ -17,7 +17,9 @@ This project is **SPZ**. `origin` is `github.com/zachshilton/hermes-agent` (a fo
 NousResearch/Hermes-Agent), deployed on Railway as a single service, `hermes-spz`
 (it was briefly one service per persona — see "One container, and the fleet that used to be four" below);
 the dashboard and MCP server it talks to (`api/mcp.ts`, `api/discord-inbound.ts`) live in a separate
-SPZ repo. Refer to the project as SPZ, not Hermes — "Hermes" means the vendored upstream framework.
+SPZ repo, checked out beside this one at `../spz-dashboard`. Every claim here about the MCP surface —
+the tool count, the deleted approval queue, `submit_video` executing unguarded — is checkable only
+there. Refer to the project as SPZ, not Hermes — "Hermes" means the vendored upstream framework.
 Every commit unique to this fork touches the same small set of files, and in practice only the
 first two are still moving:
 
@@ -81,7 +83,7 @@ existing behaviour, and keep the diff to hunks that are trivial to re-apply over
 ### How an upstream merge would be done, and why none ever has been
 
 That "trivial to re-apply" is a claim about an operation nobody here has performed, against
-machinery that does not exist yet. `git log --merges` is empty across all 45 commits on `main`, and
+machinery that does not exist yet. `git log --merges` is empty across all 47 commits on `main`, and
 `git remote -v` lists exactly one remote — `origin`, this fork. **There is no `upstream` remote
 configured**, so the first step is to make one:
 
@@ -113,14 +115,20 @@ cosmetic:
 
 | Baseline | Reports | Verdict |
 |---|---|---|
-| `git diff 3a1a3c7 HEAD` | 20 files, 2305 insertions | Wrong — sweeps in ten files of pure upstream work |
-| `git diff 111544d HEAD` | 9 files, 2003 insertions | The fork's own surface |
+| `git diff 3a1a3c7 HEAD` | 20 files, 2368 insertions | Wrong — sweeps in ten files of pure upstream work |
+| `git diff 111544d HEAD` | 9 files, 2066 insertions | The fork's own surface |
 
 Run the first one unrestricted and `usage_pricing.py`, `models.py` and the model catalog look
 fork-touched; re-applying those over a merge would be re-applying upstream's own commits back on top
 of upstream. The four-path figure below survives the correction — `git diff` over those paths is
 byte-identical from either baseline, because none of the seven commits touched them — but the
 *habit* of reaching for `3a1a3c7` does not.
+
+**Every insertion total in this section counts `SPZ.md` itself, so editing this file dates them.**
+They read 2003 and 181 until the commit that corrected them. Re-run `git diff --stat` rather than
+trusting the figure, the same way the fork point above is re-derived rather than remembered; the
+shape of the claim — which files can conflict, and that the Python half is eight small hunks — is
+what is meant to survive, not the arithmetic.
 
 **The conflict surface is much smaller than the fork-touched list above suggests, and which half a
 file falls into follows entirely from who added it.** A file this fork created has no upstream
@@ -143,7 +151,7 @@ arrived in the upstream snapshot and was subsequently edited here can. `git log 
 That is a better result than it looks. The one file every behavioural fork commit touches —
 `spz-boot.sh`, the largest and by far the most edited thing here — sits in the half that cannot
 conflict at all, and so does this file. The entire conflictable surface is `git diff 111544d HEAD`
-over the other four paths: **11 hunks, 181 insertions and 10 deletions**, of which the `Dockerfile`
+over the other four paths: **12 hunks, 184 insertions and 10 deletions**, of which the `Dockerfile`
 (the `--extra` line and the deleted `VOLUME`) and `stage2-hook.sh` (the chown safety net) halves are
 both settled and in code upstream is unlikely to be moving. Watch the `VOLUME` deletion specifically:
 it is the one hunk a merge can undo by *restoring* a line rather than by clobbering one of ours,
@@ -291,16 +299,28 @@ Two consequences worth keeping:
 ### Haiku is the default, and what that trades away
 
 `HERMES_MODEL` defaults to `anthropic/claude-haiku-4-5`, not Sonnet. The agent's whole job on this
-deployment is reading the dashboard over MCP and answering in `#spz`: 38 MCP tools plus the scoped
+deployment is reading the dashboard over MCP and answering in `#spz`: 41 MCP tools plus the scoped
 native set, nowhere near Haiku's 200k window, and none of it needs a frontier model to dispatch.
 
-**Count the tools, not the `registerTool` calls.** This said 16 for a long time, which is the number
-of call sites in the dashboard repo's `api/mcp.ts` — but one of them sits inside a
-`for (const schema of TOOL_SCHEMAS)` loop that registers the 25 entries of `TOOLS` in
-`api/_lib/spzAgent.ts`. The real exposure is 13 static + 25 dynamic = **38**, and the schema block is
-nearer 4k tokens than the 7k claimed here. Verified by counting both directly, not by reading the
-grep count off the registration site. It was 15 + 25 = 40 until `list_pending_approvals` and
-`resolve_pending_approval` went with the approval queue.
+**Count the tools, not the `registerTool` calls — and re-count them rather than quoting this
+number.** It said 16 for a long time, which is the number of call sites in the dashboard repo's
+`api/mcp.ts` — but one of them sits inside a `for (const schema of TOOL_SCHEMAS)` loop that
+registers every entry of `TOOLS` in `api/_lib/spzAgent.ts`. Correcting that gave 13 static + 25
+dynamic = 38, which was true when it was written and is **wrong now**: `TOOLS` has since grown three
+finance tools (`get_account_balances`, `search_transactions`, `get_spend_by_category`), so the real
+exposure is 13 + 28 = **41**. It was 15 + 25 = 40 before that, until `list_pending_approvals` and
+`resolve_pending_approval` went with the approval queue. The ~4k-token figure for the schema block
+was measured at 25 dynamic tools and has not been re-measured since; treat it as a floor.
+
+The number moves whenever the dashboard ships a tool, and nothing on this side notices — which is
+why the two commands matter more than the figure. Both are cheap now that `../spz-dashboard` is
+checked out beside this repo:
+
+```bash
+cd ../spz-dashboard
+grep -c 'registerTool(' api/mcp.ts    # minus 1: one site IS the TOOL_SCHEMAS loop
+grep -c "^    name: '" api/_lib/spzAgent.ts  # TOOLS is the file's only such array
+```
 
 The economics are better than the published rates suggest, for a reason that is not on any pricing
 page. **Haiku 4.5 still uses the OLD tokenizer.** Sonnet 5 — and every other Claude 4.7-or-later
@@ -681,8 +701,12 @@ ruff check .                       # lint (only PLW1514 is enabled — see below
 ty check                           # typecheck (Python)
 python scripts/check-windows-footguns.py --all   # Windows-unsafe primitives; CI runs this on every PR
 
-# TypeScript packages: ui-tui, web, apps/bootstrap-installer, apps/desktop, apps/shared
+# TypeScript packages: ui-tui, web, apps/bootstrap-installer, apps/desktop, apps/shared.
+# Root package.json is the npm workspace root and this checkout has NO node_modules, so an
+# install comes first or every --prefix below dies as a missing script, not a type error.
+npm ci --ignore-scripts            # enough for typecheck; skips node-pty's node-gyp fetch, as CI does
 npm run --prefix ui-tui typecheck  # CI runs `typecheck` for each of the five packages
+npm ci                             # desktop's vite build needs node-pty's native binary, so scripts run
 npm run --prefix apps/desktop build  # CI also runs the real vite build for desktop
 
 cd ui-tui && npm run dev           # TUI watch mode; also build / lint / fmt / test (vitest)
