@@ -83,7 +83,7 @@ existing behaviour, and keep the diff to hunks that are trivial to re-apply over
 ### How an upstream merge would be done, and why none ever has been
 
 That "trivial to re-apply" is a claim about an operation nobody here has performed, against
-machinery that does not exist yet. `git log --merges` is empty across all 47 commits on `main`, and
+machinery that does not exist yet. `git log --merges` is empty across all 50 commits on `main`, and
 `git remote -v` lists exactly one remote — `origin`, this fork. **There is no `upstream` remote
 configured**, so the first step is to make one:
 
@@ -115,8 +115,8 @@ cosmetic:
 
 | Baseline | Reports | Verdict |
 |---|---|---|
-| `git diff 3a1a3c7 HEAD` | 20 files, 2368 insertions | Wrong — sweeps in ten files of pure upstream work |
-| `git diff 111544d HEAD` | 9 files, 2066 insertions | The fork's own surface |
+| `git diff 3a1a3c7 HEAD` | 20 files, 2407 insertions | Wrong — sweeps in ten files of pure upstream work |
+| `git diff 111544d HEAD` | 9 files, 2105 insertions | The fork's own surface |
 
 Run the first one unrestricted and `usage_pricing.py`, `models.py` and the model catalog look
 fork-touched; re-applying those over a merge would be re-applying upstream's own commits back on top
@@ -696,9 +696,19 @@ loudly, which is to say not at all. Search with `git grep`, or exclude the direc
 search ever returns two hits for a path that exists once, read the prefix before believing either.
 
 ```bash
+# FIRST, on a fresh checkout: there is no .venv here, and uv/ruff/ty are not on
+# PATH on this machine. Every command below then dies as `command not found`,
+# which reads as a broken tool rather than a missing bootstrap — the same trap
+# the npm half documents further down. CI installs with `uv sync --locked`
+# (which also fails if uv.lock has drifted from pyproject.toml); do the same.
+uv sync --locked                   # creates .venv; run_tests.sh probes for it
+uv lock --check                    # what uv-lockfile-check.yml enforces on every PR
+
 # Tests — ALWAYS via the wrapper, never bare pytest. It enforces CI parity:
-# unset credential env vars, TZ=UTC, LANG=C.UTF-8, -n auto xdist, and a fresh
+# unset credential env vars, TZ=UTC, LANG=C.UTF-8, PYTHONHASHSEED=0, and a fresh
 # Python subprocess per test file (so module-level state can't leak between files).
+# NOT xdist — scripts/run_tests_parallel.py replaced it precisely because its
+# persistent workers accumulated state across files, which is the leak being fixed.
 scripts/run_tests.sh                                   # full suite
 scripts/run_tests.sh tests/gateway/                    # one directory
 scripts/run_tests.sh tests/agent/test_foo.py::test_x   # one test
