@@ -671,11 +671,12 @@ there if it joins but neither hears nor speaks.
 
 Run these from Git Bash on this Windows machine (`scripts/run_tests.sh` is POSIX sh).
 
-**First, a trap that silently corrupts every search here.** `.claude/worktrees/` holds a *complete
-second copy of this repo* — 2938 Python files at the time of writing — left behind by an agent
-worktree. It is gitignored (that is the whole `.gitignore` hunk above), so `git grep` is clean, but
-`grep -r` and `find` are not: `.claude` sorts before every real directory, so the stale copy comes
-back **first**.
+**First, a search rule, and the trap this checkout used to contain.** `.claude/` is gitignored
+(that is the whole `.gitignore` hunk above), so `git grep` never looks inside it — but `grep -r` and
+`find` do, and `.claude` sorts before every real directory, so anything living there comes back
+**first**. An agent worktree once left a complete second copy of this repo at
+`.claude/worktrees/agent-…` — 2938 Python files, 145 MB — and every unrestricted search returned the
+stale copy ahead of the file it shadowed:
 
 ```
 $ grep -rln "resolve_requested_provider" --include=*.py .
@@ -684,9 +685,15 @@ $ grep -rln "resolve_requested_provider" --include=*.py .
 ```
 
 Editing the wrong one fails silently in the worst way: the change is real, the file is right, and
-nothing you deploy ever contains it. Use `git grep`, or exclude it explicitly
-(`grep -r --exclude-dir=.claude`, `rg` honours the ignore file already). Deleting the worktree is
-also fine — nothing references it.
+nothing you deploy ever contains it.
+
+**That copy is gone** — deleted after checking that every fork-touched file in it hashed to a blob
+already in history, so nothing was lost with it, along with the stale `.git/worktrees/` admin entry
+that made every `git commit` print a `Permission denied` prune error. The rule outlives it: the next
+agent worktree lands in the same place, is ignored by the same line, and announces itself just as
+loudly, which is to say not at all. Search with `git grep`, or exclude the directory explicitly
+(`grep -r --exclude-dir=.claude`; `rg` honours the ignore file already). And if an unrestricted
+search ever returns two hits for a path that exists once, read the prefix before believing either.
 
 ```bash
 # Tests — ALWAYS via the wrapper, never bare pytest. It enforces CI parity:
