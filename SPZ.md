@@ -83,8 +83,10 @@ existing behaviour, and keep the diff to hunks that are trivial to re-apply over
 ### How an upstream merge would be done, and why none ever has been
 
 That "trivial to re-apply" is a claim about an operation nobody here has performed, against
-machinery that does not exist yet. `git log --merges` is empty across all 50 commits on `main`, and
-`git remote -v` lists exactly one remote — `origin`, this fork. **There is no `upstream` remote
+machinery that does not exist yet. `git log --merges` is empty across every commit on `main`. No
+commit total is quoted for it, deliberately: the emptiness is the claim, and any count of commits is
+stale the moment the next one lands — including the commit that writes the count down. `git remote
+-v` lists exactly one remote — `origin`, this fork. **There is no `upstream` remote
 configured**, so the first step is to make one:
 
 ```bash
@@ -115,8 +117,9 @@ cosmetic:
 
 | Baseline | Reports | Verdict |
 |---|---|---|
-| `git diff 3a1a3c7 HEAD` | 20 files, 2407 insertions | Wrong — sweeps in ten files of pure upstream work |
-| `git diff 111544d HEAD` | 9 files, 2105 insertions | The fork's own surface |
+| `git diff 3a1a3c7 HEAD` | 20 files | Wrong — sweeps in ten files of pure upstream work |
+| `git diff 111544d HEAD` | 9 files | The fork's own surface, but measured over a set that includes this file |
+| the same, plus `-- . ':(exclude)SPZ.md' ':(exclude)CLAUDE.md'` | 7 files, 1122 insertions, 10 deletions | The code surface, and the only row here that holds still |
 
 Run the first one unrestricted and `usage_pricing.py`, `models.py` and the model catalog look
 fork-touched; re-applying those over a merge would be re-applying upstream's own commits back on top
@@ -124,11 +127,16 @@ of upstream. The four-path figure below survives the correction — `git diff` o
 byte-identical from either baseline, because none of the seven commits touched them — but the
 *habit* of reaching for `3a1a3c7` does not.
 
-**Every insertion total in this section counts `SPZ.md` itself, so editing this file dates them.**
-They read 2003 and 181 until the commit that corrected them. Re-run `git diff --stat` rather than
-trusting the figure, the same way the fork point above is re-derived rather than remembered; the
-shape of the claim — which files can conflict, and that the Python half is eight small hunks — is
-what is meant to survive, not the arithmetic.
+**A total that counts `SPZ.md` can never be right at rest, because writing the number changes the
+number.** The first two rows carry file counts only for that reason. Their insertion totals read
+2003, then 2105, then 2131 — each recount dated by its own edit, by exactly the lines that edit
+added, and each one true for about the length of one commit. That is not drift to be corrected
+again; it is the wrong thing to measure. The third row is the way out: a pathspec excluding this
+file and `CLAUDE.md` measures the code alone, so it moves only when code moves, and it is the only
+figure here worth quoting. Re-run `git diff --stat` rather than trusting even that one, the same way
+the fork point above is re-derived rather than remembered; the shape of the claim — which files can
+conflict, and that the Python half is eight small hunks — is what is meant to survive, not the
+arithmetic.
 
 **The conflict surface is much smaller than the fork-touched list above suggests, and which half a
 file falls into follows entirely from who added it.** A file this fork created has no upstream
@@ -151,8 +159,10 @@ arrived in the upstream snapshot and was subsequently edited here can. `git log 
 That is a better result than it looks. The one file every behavioural fork commit touches —
 `spz-boot.sh`, the largest and by far the most edited thing here — sits in the half that cannot
 conflict at all, and so does this file. The entire conflictable surface is `git diff 111544d HEAD`
-over the other four paths: **12 hunks, 184 insertions and 10 deletions**, of which the `Dockerfile`
-(the `--extra` line and the deleted `VOLUME`) and `stage2-hook.sh` (the chown safety net) halves are
+over the other four paths: **11 hunks, 181 insertions and 10 deletions** (it read 12 and 184 until a
+recount; those paths have not moved since `57a5c0b`, so that was a miscount, not drift), of which
+the `Dockerfile` (the `--extra` line and the deleted `VOLUME`) and `stage2-hook.sh` (the chown
+safety net) halves are
 both settled and in code upstream is unlikely to be moving. Watch the `VOLUME` deletion specifically:
 it is the one hunk a merge can undo by *restoring* a line rather than by clobbering one of ours,
 which no conflict marker will point at.
@@ -689,7 +699,9 @@ nothing you deploy ever contains it.
 
 **That copy is gone** — deleted after checking that every fork-touched file in it hashed to a blob
 already in history, so nothing was lost with it, along with the stale `.git/worktrees/` admin entry
-that made every `git commit` print a `Permission denied` prune error. The rule outlives it: the next
+that made every `git commit` print a `Permission denied` prune error. `.claude/worktrees/` itself
+survives as an empty directory — it shadows nothing, and the search above now returns one hit per
+path, but the path existing is not evidence the copy is back. The rule outlives it: the next
 agent worktree lands in the same place, is ignored by the same line, and announces itself just as
 loudly, which is to say not at all. Search with `git grep`, or exclude the directory explicitly
 (`grep -r --exclude-dir=.claude`; `rg` honours the ignore file already). And if an unrestricted
@@ -893,6 +905,12 @@ behind these decisions lives in the log, not in the one-line shell diff it usual
 Ruff has **all rules intentionally disabled except `PLW1514`** (unspecified-encoding). Bare
 `open()`/`read_text()`/`write_text()` in text mode defaults to cp1252 on Windows and silently
 corrupts non-ASCII content. Don't "fix" unrelated style; do always pass `encoding=`.
+
+Two things about that lint are easy to undo by accident. **`PLW1514` is a preview rule, so
+`[tool.ruff] preview = true` is what makes it fire at all** — drop that line while tidying
+`pyproject.toml` and `ruff check .` still exits 0 on every file, now enforcing nothing. And
+`per-file-ignores` exempts `tests/**`, `skills/**`, `optional-skills/**` and `plugins/**`, so a
+missing `encoding=` in those trees is deliberate rather than an oversight to go fix.
 
 Python is pinned to `>=3.11,<3.14`, and every direct dependency is exact-pinned (`==X.Y.Z`) as a
 supply-chain measure — bump the pin in `pyproject.toml` and regenerate `uv.lock` with `uv lock`;
