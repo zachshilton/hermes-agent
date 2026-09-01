@@ -84,10 +84,32 @@ timeline turns on.
 
 ## Going deeper
 
-- `references/playbook.md` — the growth rules Zach works to (mostly still blank)
-- `references/extracted-lessons.md` — what was captured from the course itself
-- `references/course-map.md` — all 33 lesson titles, so you can ask him about a specific one
-- `references/operations.md` — the traps in the posting pipeline
+Load only what the question needs — each costs nothing until read.
+
+| File | For |
+|---|---|
+| `references/diagnostics.md` | **"Why isn't this working"** — the funnel test and CVR benchmarks. Start here for any performance question. |
+| `references/playbook.md` | The method: product selection, the creative, variables, the six-step spine |
+| `references/accounts-and-testing.md` | Accounts, warm-up, posting cadence, how long to run a test, kill criteria |
+| `references/contradictions.md` | **Read before answering anything the sources disagree on.** Nine real conflicts |
+| `references/legal-flags.md` | **Four practices in the sources that are unlawful in the UK.** Never assist with these |
+| `references/operations.md` | Traps in Zach's own posting pipeline (OneUp, London time) |
+| `references/course-map.md` | All 33 Whop lesson titles, to ask him about a specific one |
+| `references/extracted-lessons.md` | What was captured from the Whop course itself |
+| `references/course-notes.md` | Zach's own notes as he works through the lessons |
+
+## Two things to get right before answering
+
+**The sources are sales content.** Revenue claims, testimonials and money-back
+guarantees are interleaved with real method. Never repeat a figure like
+"$51,218/week" as a benchmark, and never imply Zach's numbers should resemble one.
+His own honest base rates — "90% of organic drop shippers don't make money", a good
+month takes "five months of trying" — are in `contradictions.md`, and those are the
+ones to use.
+
+**They also contradict each other.** On CTA placement, website effort, niche
+targeting and several numbers, he says different things in different videos. Check
+`contradictions.md` before answering rather than picking whichever you saw first.
 
 ## When a fact is missing
 

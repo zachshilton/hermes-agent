@@ -139,6 +139,23 @@ shadowban risk.
 - To fix a weak creative, check retention/drop-off in native insights to find
   where viewers leave, change the variable at that exact point, and retest.
 
+## The product framework (his most structural claim)
+
+**Wow = virality. Value = longevity. Niche = volatility.**
+A six-figure/month organic winner has **all three** -- stated categorically, "no
+more, no less", "I will put my bank account on the line". Niche-only spikes then
+dies: you can win a week but "you're not going to hit consistent 20, 30K months".
+Worked example: a vacuum-seal travel backpack -- niche (travellers), value (fits
+more in a carry-on), wow (the mechanism).
+
+Separately he weights the whole game: **product 15%, creatives 85%.** The product
+is the concrete foundation; the creatives are the building. And of the three
+types, **value products convert 3-4x better** than wow or niche, but are harder to
+run organically -- which is why most people avoid them. The stated best
+combination is **a wow product that provides value**.
+
+Litmus test: **"If you wouldn't buy your own product, don't sell it."**
+
 ## Product and niche selection
 
 - Pair a **proven product archetype** with a **proven niche/fandom**. Find each
@@ -209,35 +226,49 @@ Three honest mismatches. Say them rather than working around them:
 
 ## Still unconfirmed
 
-- Accounts per store, and whether the same video should vary between them
-- Caption length, and whether links go in captions at all
-- How long a product runs before it is killed
-- Margin and pricing rules
-- **Where Zach thinks the course is wrong for his niche** -- nothing here is
-  his own judgement yet, and that remains the most valuable missing piece
+- **Accounts per store or per product.** Never stated anywhere, in any video,
+  including six checked specifically for it. Do not infer a number.
+- **Whether the same video is posted identically across accounts or varied.**
+  Never addressed either.
+- Caption length, and whether links go in captions at all.
+- **Where Zach thinks the sources are wrong for his niche** -- still the most
+  valuable missing piece, and the only part no extraction can supply.
+
+Answered since the first draft: kill criteria, testing cadence, margin direction
+and product-selection criteria -- see `accounts-and-testing.md` and
+`diagnostics.md`.
 
 See `course-notes.md` for the notes he is taking as he works through the
 remaining lessons.
 
 ## Source coverage
 
-What this file was actually built from, so its gaps are visible:
+Built from **15 successfully extracted videos** across both channels, plus 2 of 33
+Whop lessons. What is NOT here is as important as what is.
 
 | Source | Status |
 |---|---|
-| Whop: *Automation & Split Testing* board | Read |
-| Whop: *Priming Your Mind* | Read |
-| Whop: the other 31 lessons | Not extracted -- video only, see `course-map.md` |
-| YT: *How i automate 30 ai videos a day* | Full transcript |
-| YT: *How i make ai videos ... $24,192/week* | Full transcript |
-| YT: *these ai videos print me $28,982/week* | Full transcript |
-| YT: *How i make ai videos ... $30,482/week* | Full transcript |
-| YT: *HOW TO ACHIEVE ANYTHING BY IGNORING REALITY* | Read; almost nothing actionable |
-| YT: *How i find niche products ... $30k/week* | **FAILED** -- transcript panel never populates |
-| YT: the other ~79 videos | Not attempted |
+| Whop: *Automation & Split Testing*, *Priming Your Mind* | Read (video frames) |
+| Whop: the other 31 lessons | Video only -- see `course-map.md` |
+| YT business channel: 11 videos | Full transcripts |
+| YT personal channel: 4 videos | Full transcripts, incl. two 8-hour courses |
+| YT: *How i find niche products ($30k/week)* | **FAILED** x7 attempts |
+| YT: *so you hit your first $10k month... how to scale* | **FAILED** -- caption file returns 0 bytes at source |
+| YT: *Why Dropshipping Will Be DEAD by 2026* | **FAILED** |
+| YT: *$0-$20,000 store breakdown*, *Beginners Guide to $10k/Month* | **FAILED** -- both were the "week one, in order" videos |
+| YT: ~120 remaining videos | Not attempted |
 
-The failed one is the gap that matters: it is the product-selection guide, and
-product selection sits upstream of every rule in this file. What is written
-under "Product and niche selection" above came from the *other* videos in
-passing, not from that guide. Its caption track exists, so a retry later is
-likely to work.
+**The Whop course appears to be duplicated free on YouTube.** Two exact duration
+matches (1:25:31 vs 1:25:32; 1:10:10 vs 1:10:12). If that holds for more lessons,
+the paid course is reachable through transcripts.
+
+**Two long videos were mostly filler.** The 8-hour "Step By Step Guide on How To
+Hit $10k/Month" is a mindset lecture with zero operational content -- verified by
+keyword-searching the full 537,281 characters. The other 8-hour course is a
+stitched compilation of ~10 videos, roughly half unrelated. **Titles on these
+channels do not reliably indicate content.**
+
+**Five videos failed** despite full recovery attempts. One had a caption file that
+returns 0 bytes at YouTube's end, so it is unrecoverable rather than flaky. Two of
+the failures were the beginner-sequencing videos, which is why "what to do in week
+one, in order" is thinner here than the rest.
