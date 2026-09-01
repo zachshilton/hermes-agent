@@ -243,29 +243,38 @@ remaining lessons.
 
 ## Source coverage
 
-Built from **26 successfully extracted videos** across both channels, plus 2 of 33
-Whop lessons. 10 failed. What is NOT here matters as much as what is.
+**52 videos extracted, 21 failed**, across both channels, plus 2 of 33 Whop
+lessons. Roughly a third of videos on these channels have a transcript panel that
+never populates -- one serves a zero-byte caption file at source.
 
-| Source | Status |
+| Source | Extracted |
 |---|---|
-| Whop: 2 lessons readable as video frames | Read |
-| Whop: the other 31 | Video only -- but see below |
-| YT business channel | 18 extracted |
-| YT personal channel | 8 extracted, incl. two 8-hour courses |
-| 10 videos across both | **FAILED** -- transcript panel never populates |
-| ~110 remaining | Not attempted, mostly lifestyle vlogs |
+| YT business channel | ~34 |
+| YT personal channel | ~18 |
+| Whop course | 2 of 33, as readable video frames |
+| Remaining | ~30, almost entirely lifestyle vlogs |
 
 **The paid Whop course is duplicated free on YouTube -- confirmed.** The Mikey
-guest call opens: "This was a guest call that I had in my community." Same
-recording, one second's runtime difference. So the paid lessons are likely
-reachable as free transcripts.
+guest call opens "This was a guest call that I had in my community" and matches a
+paid lesson to within one second of runtime.
 
-**Four videos' titles misrepresent their content.** An 8-hour "Step By Step Guide
-to $10k/Month" is a mindset lecture with zero operational content, verified by
-keyword-searching all 537,281 characters. "Advice I Wish I Knew" names no
-mistakes. "How I'd Make My First $100k" contains no ecom tactics at all. And "AI
-dropshipping is dead" argues the opposite of its title. **Do not infer content
-from a title on these channels.**
+## Two things about the sources themselves
 
-**Two operators who have each done over $1M disagree** on whether to warm up an
-account at all -- see `contradictions.md`, which now tracks 16 conflicts.
+**Titles do not indicate content.** An 8-hour "Step By Step Guide to $10k/Month"
+is a mindset lecture with zero operational content, proven by keyword-searching
+all 537,281 characters. "Advice I Wish I Knew" names no mistakes. "How I'd Make My
+First $100k" contains no ecom tactics. "AI dropshipping is dead" argues the
+opposite of its title. A "$200k/month Store Breakdown" contains no store breakdown.
+
+**The material is heavily redundant.** Of nine identity videos, only two are
+substantially original and one adds nothing at all. Three monthly retrospectives
+are functionally the same video. The eight "$60k-$78k a month" titles do not even
+move monotonically in time -- one dated September 2024 at $67k predates two at
+$70k, and the January 2025 video puts his actual peak month at October 2024 while
+naming $100k as a forward-looking goal. **The rising numbers in the titles are
+packaging, not a timeline.**
+
+## What is still missing
+- Caption length, and whether links belong in captions at all
+- **Where Zach thinks the sources are wrong for his niche** -- still the only part
+  no extraction can supply

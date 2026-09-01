@@ -54,6 +54,38 @@ already-warm account beats starting fresh**; a cold or off-niche pivot kills rea
   concept again.
 - **7 to 10 videos** before you should expect to see an outlier at all.
 
+## The day-by-day test cycle -- the most precise timeline given
+
+| Day | Action |
+|---|---|
+| **1** | Order the product. **Start market research the same day** -- doing research only after a test ends is called the number one rookie mistake |
+| **4** | No virality? Test new marketing angles and concepts |
+| **7** | Market research checkpoint |
+| **9** | Still no virality? Consider killing and replacing the product |
+
+Two products roughly every 10-13 days, with the next product ordered while the
+current one is still being tested, so there is never a multi-day gap waiting on
+shipping.
+
+This is consistent with the 5-days-prep / ~9-day-test framing found elsewhere, and
+adds the day-4 and day-7 checkpoints that the other statements leave out.
+
+## Account health, diagnosed
+
+**"You don't have a creative issue, you have an account health issue."** He puts
+it at roughly 70% of people believing the reverse.
+
+The specific failure: your views come from other dropshippers' burner accounts
+rather than real consumers. **Self-diagnose it from an unhealthy saves/shares
+ratio against real engagement** -- one figure quoted is 20,000 views against 700
+saves and 400 shares.
+
+A brand-new account posting four videos a day of the same content gets no push.
+Warm up by following and interacting within the niche first -- he calls it
+"hacking your niche".
+
+Practical: a **free Google Voice number** verifies new TikTok/Instagram accounts.
+
 ## Do not kill a product until all four "ample" levers are tried
 1. **Ample concepts** — the format may be failing, not the product.
 2. **Ample angles** — several ICPs on one product, each for a week or two.

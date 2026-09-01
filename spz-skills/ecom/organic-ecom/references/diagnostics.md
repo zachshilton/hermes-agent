@@ -63,12 +63,18 @@ Minimum AOV cited for value products: **$100**.
 Two case studies name them explicitly:
 
 - **Exclude** (low purchasing power, junk sessions): Romania, Bulgaria, Russia,
-  India, Eastern Europe generally.
+  India, Algeria, Albania, Eastern Europe generally.
 - **Keep**: US, UK, Germany, France, Canada, Australia, Western Europe.
 
 Recompute the conversion rate on the filtered session count **before** touching
 price, offer or site. One operator's raw CVR read 1.1% and the real bottleneck was
 targeting; another's read 0.3% and became "a fat 1%".
+
+## Judging a competitor rather than guessing
+Use the **double test order** in `growth-channels.md` to get a competitor's real
+order count from their Shopify order numbers, instead of inferring from views.
+A useful sanity figure alongside it: "6K per mill" is called high for a wow
+product.
 
 ## A cheap conversion lever, measured
 Adding a **shipping-protection / warranty upsell at checkout** raised conversion

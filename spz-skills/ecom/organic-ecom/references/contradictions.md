@@ -148,6 +148,44 @@ Reconcilable: his is a **personal brand** account, where format novelty compound
 while product accounts are disposable test surfaces. But he presents it as a
 general lesson, so flag the distinction rather than repeating his framing.
 
+## 5i. Curate your inputs, or be chronically online?
+
+- **Input curation:** consume ALL of one source before moving to the next; never
+  mix advice from several people on the same topic in parallel. Cut negative
+  inputs entirely.
+- **"Autistic habits":** deliberately stay **chronically online** -- notifications
+  on, roughly 10 hours a day of screen time, many platforms and people at once --
+  as fuel for content ideas and market awareness.
+
+As stated these are incompatible. The likely reconciliation is that they address
+different jobs: curation is for LEARNING a skill, chronic consumption is for
+MARKET AWARENESS as a content operator. He never draws that distinction himself,
+so present both and name the split.
+
+## 5j. Posting volume -- 4-5 a day, or 50?
+
+- **4-5 videos per day per account maximum**, beyond which "you're going to be
+  flagged as a bot".
+- Elsewhere: **"you can't post like 80 times in a day"** and expect it to force
+  virality.
+- But in a retrospective he relays a **Meta-platform contact** saying "they post
+  50 times a day", and that "if you make more accounts and post more videos in a
+  single day, you're going to get more reach" -- while explicitly mocking
+  "post two to three times a day" advice as superstition.
+
+A 4-5 cap and a 50-a-day claim cannot both be operating guidance. The 50 figure is
+second-hand and unverified; the 4-5 cap is stated as his own rule. **Treat 4-5 as
+the working number** and flag the 50 as an unverified claim if Zach raises it.
+
+## 5k. Proof-of-concept stores: 3-5, or 7 and 12?
+
+- "Your first **three to five stores** are proof of concept."
+- Elsewhere, repeated in two videos: **first sale on his 7th store, $10k/month on
+  his 12th.**
+
+A range and two specific ordinals that do not reconcile. Both are his own numbers
+about his own history.
+
 ## 6. The same study, two sets of numbers
 
 His protein-flavour choice-overload study appears in both long courses:
