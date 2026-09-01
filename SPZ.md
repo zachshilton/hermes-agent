@@ -123,7 +123,7 @@ cosmetic:
 |---|---|---|
 | `git diff 3a1a3c7 HEAD` | 20 files | Wrong — sweeps in ten files of pure upstream work |
 | `git diff 111544d HEAD` | 9 files | The fork's own surface, but measured over a set that includes this file |
-| the same, plus `-- . ':(exclude)SPZ.md' ':(exclude)CLAUDE.md'` | 12 files, 1455 insertions, 10 deletions | The code surface, and the only row here that holds still |
+| the same, plus `-- . ':(exclude)SPZ.md' ':(exclude)CLAUDE.md'` | 20 files, 2264 insertions, 10 deletions | The code surface, and the only row here that holds still |
 
 Run the first one unrestricted and `usage_pricing.py`, `models.py` and the model catalog look
 fork-touched; re-applying those over a merge would be re-applying upstream's own commits back on top
