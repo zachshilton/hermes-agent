@@ -159,13 +159,27 @@ arrived in the upstream snapshot and was subsequently edited here can. `git log 
 That is a better result than it looks. The one file every behavioural fork commit touches —
 `spz-boot.sh`, the largest and by far the most edited thing here — sits in the half that cannot
 conflict at all, and so does this file. The entire conflictable surface is `git diff 111544d HEAD`
-over the other four paths: **11 hunks, 181 insertions and 10 deletions** (it read 12 and 184 until a
-recount; those paths have not moved since `57a5c0b`, so that was a miscount, not drift), of which
+over the five paths marked **Yes** above: **12 hunks, 184 insertions and 10 deletions**, of which
 the `Dockerfile` (the `--extra` line and the deleted `VOLUME`) and `stage2-hook.sh` (the chown
 safety net) halves are
 both settled and in code upstream is unlikely to be moving. Watch the `VOLUME` deletion specifically:
 it is the one hunk a merge can undo by *restoring* a line rather than by clobbering one of ours,
 which no conflict marker will point at.
+
+**That figure stood at 11 and 181 for one commit, and how it got there matters more than the
+number.** It was written as a correction, with the earlier 12 and 184 dismissed in passing as "a
+miscount, not drift" — but the two counts were never measuring the same thing. 11 and 181 is this
+diff over *four* paths, silently dropping `.gitignore`, which the table above marks conflictable and
+which contributes exactly the missing hunk and the missing three insertions. Nothing had drifted and
+nothing was miscounted: the pathspec narrowed, the prose kept saying "four" while the table went on
+saying five, and the arithmetic was impeccable on both sides of the disagreement. That is the
+failure mode this whole section is written against, and it is worse than a stale number — a stale
+number is at least wrong about something checkable. **So re-derive the pathspec from the table, not
+just the figure**, and note that the hunk count is context-dependent (`-U0` reports 13, not 12):
+
+```bash
+git diff --stat 111544d HEAD -- Dockerfile docker/stage2-hook.sh gateway/run.py tools/tts_tool.py .gitignore
+```
 
 **So re-applying the two Python changes by hand is the expected outcome of a merge, not a sign one
 went wrong.** That is precisely why the bar above is set where it is, and why each change is shaped
@@ -750,10 +764,21 @@ Note what the suite above does *not* cover: `scripts/run_tests.sh` tests upstrea
 fork has never written any. **`docker/spz-boot.sh` has no behavioural test.** The one automated
 check it does get is shellcheck at `--severity=error` — `.github/workflows/docker-lint.yml` runs it
 over `scandir: ./docker`, gated by `ci.yml` on the `docker_meta` change class, which
-`scripts/ci/classify_changes.py` defines as the `docker/` prefix. That catches unquoted variables
+`scripts/ci/classify_changes.py` defines as `_DOCKER_META = ("docker/", ".hadolint.yml",
+"Dockerfile")`. That catches unquoted variables
 and syntax errors, not one line of what the script actually *does*. Its first real run of that is a
 Railway container boot, so verify it by hand before pushing, the way the commit history describes:
 a temp `HERMES_HOME` and a stubbed `hermes` earlier on `PATH`.
+
+**The heading is about `spz-boot.sh` specifically — the fork's other docker surface is not
+unguarded.** That same workflow's second job runs hadolint over the `Dockerfile` at
+`failure-threshold: warning`, and because `Dockerfile` is its own entry in the tuple above, a
+Dockerfile-only change triggers the lane on its own rather than riding a `docker/` edit. Worth
+knowing before touching either of the two fork hunks there. It does not, however, cover the one that
+matters most: **nothing in CI notices the `VOLUME` instruction being restored**, since hadolint has
+no opinion about an instruction upstream wrote deliberately. Railway's build pipeline rejecting the
+push is still the only thing that catches it, which is the whole reason that deletion is called out
+as the hunk a merge can undo without leaving a conflict marker.
 
 Put a stub `hermes` (log `$*`, `exit 0`) and a stub `chown` (`exit 0`, since there's no `hermes`
 user locally) in a temp dir, then run the script with that dir prepended to `PATH` and `HERMES_HOME`
