@@ -1,0 +1,243 @@
+# The playbook
+
+Zach's method, taken **only** from his two sources: the Organic Overdrive
+course on Whop, and the Smith Rees Business YouTube channel (the same person --
+the channel links to organicoverdrive.io). Nothing here is general ecommerce
+advice, and nothing should be added that is not from those two.
+
+Rules are distilled, not reproduced. Where a number is his, it is quoted as he
+said it.
+
+## Read the sources this way
+
+The YouTube videos are **sales content** as well as method. Interleaved with
+the technique are revenue claims, student testimonials and a money-back
+guarantee pitch. Keep the two apart:
+
+- **Method** -- the rules below. Use them.
+- **Claims** -- "$28,982/week", "$30,482/week", "40K a month in 3 months",
+  "6% acceptance rate". These are marketing. Do **not** repeat them to Zach as
+  benchmarks, and never imply his numbers should look like them. They are
+  recorded here only so you recognise them as claims if he raises one.
+
+## The spine: a six-step process
+
+Consistent across the Whop board and the YouTube guides, which is the main
+reason to trust it as the real structure rather than one video's framing:
+
+1. Connect the generation tool to Claude over MCP
+2. Feed Claude a labelled reference library of concepts
+3. Test an ample, varied batch of creatives
+4. Analyse posts and find outliers against your own baseline
+5. Analyse the outliers to isolate the variable that made them work
+6. Automate -- recombine around the winning variable
+
+**"You cannot build off of nothing. You need to get data."** Stated flatly as
+the precondition. Steps 4-6 are meaningless without step 3 having produced a
+baseline.
+
+## The creative, as five clips
+
+His explicit five-step structure:
+
+| # | Clip | Job |
+|---|---|---|
+| 1 | **Hook** | Stop the scroll. Visual hook AND text hook together. For a problem-solving product, show the problem. |
+| 2 | **Showcase** | Reveal the product and its use case -- the solution. |
+| 3 | **Context / bridge** | The USPs and value proposition; ends on a text bridge ("...but") pushing to the next clip. |
+| 4 | **Second bridge** | The product actually in use, moving toward the payoff. |
+| 5 | **CTA** | The result delivered, plus the comment-a-keyword prompt. |
+
+A shorter three-clip form also works -- hook, bridge, reveal. He cites one such
+creative reaching a million views.
+
+Clip order in the niche-product variant: hook -> unboxing/bridge -> reveal /
+outcome -> CTA.
+
+**Every transition is a deliberate bridge.** Clips must be linked by copy that
+carries retention; clips assembled with no connective tissue is the named
+failure mode.
+
+**Copy and clips must be congruent.** Get context across visually so the text
+does not have to repeat it -- if the clip shows a plane, the text need not say
+"for planes". The stated aim is the most meaning for the least text.
+
+## The hook
+
+- It carries **"around 70% of your video"** -- his own estimate of its weight.
+- The scroll-stopping window is **the first 1 to 3 seconds**.
+- **Hard rule: "A hook clip should be one thing and one thing only."** Stopping
+  the scroll and opening a curiosity gap. Nothing else belongs in it.
+- Show something visually surprising or incongruous as the scroll-stopper, then
+  pan or cut to the reveal so the gap is opened before it is paid off.
+
+**Investment bias, with his actual numbers.** Getting a viewer past the opening
+makes them likely to finish, and he gives the thresholds directly -- prefacing
+one with "I've never said this on YouTube":
+
+> if you can get somebody to stay for the **first 2 to 4 seconds** of your
+> creative, they are more likely to watch the entire thing
+
+> if you watch the **first 5 seconds** of a video, you're going to finish the
+> rest because you've already watched 5 seconds
+
+He restates it once as "the first 1 to 4 seconds", so treat the band as
+roughly 2-5 seconds rather than a precise cutoff.
+
+## Clip lengths
+
+- Hook shot: he narrates "the entire **2-second clip** to where it shows his
+  face".
+- Bridge / unboxing clip: **"a 2 to 3 second clip"** giving context and moving
+  the viewer on. Its only job is the transition -- it is not where you sell.
+
+## Variables: what to change, what to hold
+
+This is the core of the method and it appears identically in all three
+sources, which is the strongest signal in this file.
+
+**Variables OF a creative** (the things you may change, one at a time):
+hook, spot, music, concept, model, controversy / marketing angle.
+
+**Variables to KEEP constant:** lighting (natural and imperfect), video style
+(phone-style shot), product (same product, same colour), background (same
+lighting, same room -- vary only furniture style).
+
+**"Don't skip variables to keep."** Stated as a direct imperative. The point of
+holding them is that the outlier becomes attributable; change several at once
+and you learn nothing from the result.
+
+**"Same but different"** is the same idea applied to a proven winner: keep the
+niche and product, change the angle; or keep the angle, change the niche. New
+is required -- "you have to be novel" -- but novelty means one changed variable,
+not a fresh start.
+
+## Clip banks, and why reuse is forbidden
+
+Build creatives modularly -- he calls it Lego pieces or Mr Potato Head.
+Separate, numbered banks: hook clips, bridge clips, character/model clips,
+context clips, CTA clips. Assemble by naming pieces:
+
+    hook clip 1 + bridge clip 4 + context clip 3 + CTA clip 3 = creative 1
+    hook clip 4 + bridge clip 1 + character 2 + CTA clip 3 = creative 2
+
+**Hard rule: never reuse the same hook clips repeatedly.** The bank exists
+specifically so you never have to. Reuse causes creative fatigue and raises
+shadowban risk.
+
+## Outliers and the testing timeline
+
+- **It takes around 7 to 10 videos to find an outlier.** This is the single
+  most useful number in the file: it says how long to run before concluding
+  anything.
+- An outlier is measured **against your own baseline**, not an absolute view
+  count.
+- **A small outlier still counts.** It does not have to be a 7x; a slight
+  overperformance is a usable signal.
+- Once a variable is identified as the likely driver, double down on it -- reuse
+  that variable while continuing to test others around it.
+- To fix a weak creative, check retention/drop-off in native insights to find
+  where viewers leave, change the variable at that exact point, and retest.
+
+## Product and niche selection
+
+- Pair a **proven product archetype** with a **proven niche/fandom**. Find each
+  independently, then combine. Do not invent something new.
+- Generate new products by swapping one axis: same archetype, different niche;
+  or same niche, different product.
+- If a competitor already runs a product in a niche, **swap the product, keep
+  the niche** rather than copying outright.
+- Niche/fandom products need far less product-research skill than value
+  products -- the fandom drives the purchase, not the product's merits.
+- Decide deliberately whether you are picking a product for itself or for its
+  angle potential. Organic is a marketing game, so a mediocre product carried
+  by strong angles is a legitimate choice.
+- Always be able to answer: **why would somebody buy this?** The creative has
+  to communicate that logic.
+- Keep the AI model congruent with the niche -- an older model for an Elvis
+  audience, camo for a military niche.
+
+## Speed, volume and the market
+
+- **Three to four creatives a day** is the stated output for going viral.
+- **A product you spot has about 48 hours** before "seven, 10 other people"
+  are on it.
+- Providers move in herds, chasing whatever niche just went viral. Watch the
+  swing and move before the peak.
+- **"Product to market will always beat everything else."**
+
+## CTA and captions
+
+- CTA is **comment a keyword**, wired to an auto-DM that sends the purchase
+  link. He names ManyChat.
+- The CTA clip shows the result delivered, then prompts the comment.
+
+## Tooling he names
+
+Claude (over MCP, holding the context library), Higgsfield and Nano Banana for
+generation, ManyChat for the comment-to-DM automation, VidIQ's Chrome extension
+for spotting outliers on any Instagram/TikTok account (a coloured multiplier
+badge, darker = bigger outlier), Pinterest for reference photos.
+
+**Claude holds the context, not the generation tool.** "The only context you're
+giving Higgsfield is a Claude prompt." Build the library by screenshotting 2-3
+key frames from a viral clip, sending them to Claude with an explicit "I don't
+want any generations, I simply want to feed you context", and naming the
+concept so it can be referenced later.
+
+**Hard rule, stated twice: it never becomes "Claude, make me viral videos."**
+Manual editing and manual text/audio work remain necessary. A generic model does
+not understand the organic ethos and has to be taught it.
+
+## Where this method meets Zach's actual setup
+
+Three honest mismatches. Say them rather than working around them:
+
+1. **Step 4 is not executable from the dashboard.** Finding outliers needs
+   per-post performance, and no SPZ tool has any. The data does exist -- in
+   native Instagram/TikTok insights and behind VidIQ -- but nothing connects it
+   to this system. That is an **integration gap, not an absence**: when Zach
+   asks what is working, ask him for the outlier rather than claiming you
+   cannot know, and note that connecting it would make steps 4-6 automatable.
+2. **A durable creative or caption rule belongs in CLZ**, not in conversation.
+   CLZ drafts the captions and schedules the posts, so use `instruct_clz` and
+   change **one named variable** so the result stays attributable -- the
+   method's own discipline applied to your own tooling.
+3. **The 7-10 video timeline needs counting.** You can see what was posted and
+   when, so you can tell him how many have gone out for a product -- which is
+   exactly the input step 4 needs, even though you cannot see how they did.
+
+## Still unconfirmed
+
+- Accounts per store, and whether the same video should vary between them
+- Caption length, and whether links go in captions at all
+- How long a product runs before it is killed
+- Margin and pricing rules
+- **Where Zach thinks the course is wrong for his niche** -- nothing here is
+  his own judgement yet, and that remains the most valuable missing piece
+
+See `course-notes.md` for the notes he is taking as he works through the
+remaining lessons.
+
+## Source coverage
+
+What this file was actually built from, so its gaps are visible:
+
+| Source | Status |
+|---|---|
+| Whop: *Automation & Split Testing* board | Read |
+| Whop: *Priming Your Mind* | Read |
+| Whop: the other 31 lessons | Not extracted -- video only, see `course-map.md` |
+| YT: *How i automate 30 ai videos a day* | Full transcript |
+| YT: *How i make ai videos ... $24,192/week* | Full transcript |
+| YT: *these ai videos print me $28,982/week* | Full transcript |
+| YT: *How i make ai videos ... $30,482/week* | Full transcript |
+| YT: *HOW TO ACHIEVE ANYTHING BY IGNORING REALITY* | Read; almost nothing actionable |
+| YT: *How i find niche products ... $30k/week* | **FAILED** -- transcript panel never populates |
+| YT: the other ~79 videos | Not attempted |
+
+The failed one is the gap that matters: it is the product-selection guide, and
+product selection sits upstream of every rule in this file. What is written
+under "Product and niche selection" above came from the *other* videos in
+passing, not from that guide. Its caption track exists, so a retry later is
+likely to work.

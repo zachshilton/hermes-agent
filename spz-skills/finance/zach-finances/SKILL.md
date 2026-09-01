@@ -82,6 +82,16 @@ Load only what the question needs:
 - `references/personal.md` — day-to-day money, accounts, recurring costs, how he wants spending framed
 - `references/self-employment.md` — sole-trader income, allowable expenses, tax set-aside, self-assessment
 - `references/vat.md` — VAT registration, scheme, returns and the MTD position
+- `references/uk-tax-system.md` — how the three charges fit together, sole trader vs limited company, what is deductible
+
+## Rates go stale; mechanisms do not
+
+The references carry the *structure* of the tax system deliberately, and are
+thin on rates and thresholds. Every one of those changes each April, some are
+frozen only to a stated year, and a confidently quoted stale rate is the most
+damaging thing you can produce here — it is precisely the kind of answer Zach
+would act on without re-checking. Explain the mechanism, then name GOV.UK or
+his accountant for the number. That is a complete answer, not a hedge.
 
 ## When a fact is missing
 
