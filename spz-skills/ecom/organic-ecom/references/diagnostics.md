@@ -39,6 +39,42 @@ of the single biggest conversion factors.
 - Engagement floor: about **100 likes per 1,000 views**, with 80-90 the lowest
   acceptable.
 
+## Revenue per million views -- the KPI that ties views to money
+
+The single most useful benchmark found, because it converts the metric you CAN see
+(views) into the one you care about, and it flags fraud in both directions.
+
+| Revenue per 1,000,000 views | Reading |
+|---|---|
+| **$3,000-$4,000** | Normal for an ordinary organic product |
+| **~$5,000** | The target for a **value** product (a different operator's figure) |
+| **$7,000-$8,000+** | **A RED FLAG, not a win.** Place a test order to check the store is genuinely converting rather than showing reused or skewed numbers |
+
+Note the two normal figures come from two different operators, so treat the band
+as $3k-$5k rather than a single number.
+
+**Value products convert independent of view count.** One case: a $1,000 day from
+roughly 90,000 views, on a site less than two days old. So a value product that
+needs mega-virality to be profitable is not working as a value product.
+Minimum AOV cited for value products: **$100**.
+
+## The geo filter, with the actual country lists
+
+Two case studies name them explicitly:
+
+- **Exclude** (low purchasing power, junk sessions): Romania, Bulgaria, Russia,
+  India, Eastern Europe generally.
+- **Keep**: US, UK, Germany, France, Canada, Australia, Western Europe.
+
+Recompute the conversion rate on the filtered session count **before** touching
+price, offer or site. One operator's raw CVR read 1.1% and the real bottleneck was
+targeting; another's read 0.3% and became "a fat 1%".
+
+## A cheap conversion lever, measured
+Adding a **shipping-protection / warranty upsell at checkout** raised conversion
+by roughly **+0.3 percentage points immediately, with no price change**. The
+operator caveats that it may not generalise to every product.
+
 ## Finding the outlier, then the variable
 - An outlier is measured **against your own baseline**, never an absolute count.
 - **A small outlier still counts** — it does not have to be a 7x.

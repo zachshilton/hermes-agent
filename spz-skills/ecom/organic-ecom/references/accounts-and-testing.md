@@ -63,14 +63,74 @@ already-warm account beats starting fresh**; a cold or off-niche pivot kills rea
 Top sellers have tested "hundreds if not over a thousand" products. Testing 4-5
 and stopping is far too few. Testing "a product a month" is called bottom-feeder.
 
-## THE OPEN QUESTION
-**How many accounts per store or per product is never stated anywhere.** Fifteen
-videos extracted, including six specifically checked for it. The only adjacent
-figure is a historical one-off bulk purchase of "like a thousand" aged Gmail
-accounts, not tied to any store or product count.
+## ANSWERED: how many accounts, and how often to post
 
-**Whether the same video is posted identically across accounts, or varied, is also
-never addressed.** The only hint is that he makes "2-3 slightly different versions"
-of a clip for filler variety — never generalised into a rule.
+Unstated across 19 videos, then given concretely in the older pre-AI material.
 
-Both remain genuinely unknown. Ask Zach; do not infer a number.
+- **Test one product across 3 different TikTok accounts.** Scale up to 2 products
+  at a time across multiple accounts. This is the only explicit account count
+  anywhere in the corpus.
+- **Maximum 4-5 videos per day per account.** Beyond that "you're going to be
+  flagged as a bot". Note this is a PER-ACCOUNT ceiling, and it sits alongside the
+  3-videos-a-day guidance elsewhere rather than replacing it.
+- **Also run 2-3 different products simultaneously on one niche-primed account**,
+  rather than sequentially waiting for each to prove out. The two rules coexist:
+  spread one product across accounts, and spread several products across one
+  warm account.
+- Keep 2-3 products in hand or in transit so testing is never gated by 4-6 day
+  shipping.
+
+**Caveat: these figures come from the older pre-AI videos.** They are the only
+numbers given, but AI generation has changed the volume economics, and the newer
+videos never restate them. Treat as the baseline, not a certainty.
+
+## Platform hierarchy — easiest virality is the worst converter
+
+| Platform | Virality | Conversion |
+|---|---|---|
+| YouTube Shorts | Easiest -- "wild west", huge view counts | **Worst.** A client hit 100M+ views and a YouTube plaque, cited as a cautionary example |
+| TikTok | "A slot machine" -- unpredictable | Middling |
+| Instagram | Hardest to grow, slow-burn | **Best by far.** "90% of the money in organic is made on Instagram" |
+
+Cited contrast: 72M YouTube Shorts views converted poorly; 145M Instagram views
+produced "multiple $88,000 days" and "a $47,000 week".
+
+**Never conflate "went viral" with "made money".** Track them separately per
+platform.
+
+## Reposting a concept
+**Cap at 3-4 attempts. Never a 5th.** Stated in three separate videos, the most
+consistent rule in the whole corpus. If four attempts at a format have not gone
+viral, change the concept or the hook rather than posting it again.
+
+## Account preservation
+**Never delete or rebrand an account to test a new product.** Switch the product,
+keep the account AND the niche. Old failed-product videos are reframed as having
+warmed the account rather than as dead weight.
+
+Worked case: a client ran a holographic speedometer for ~30 videos with no
+traction, kept the same account and niche, switched product to a radar-detector
+spray, and hit.
+
+**Switching an account's NICHE kills it.** A gym account with 5,000 followers
+cannot become a Christian-niche account.
+
+*(Note the conflict on archiving in `contradictions.md` -- one video says archive
+old posts, another says do not.)*
+
+## Account health as a distinct failure mode
+An unprimed or unhealthy account is treated as a bot by the algorithm and
+suppressed **regardless of creative quality**. He frames investment in equipment
+(ring light, chest mount) as an account-health signal, not just aesthetics. Do not
+diagnose a creative problem before ruling this out.
+
+## Store count before it works — his own numbers
+**First sale on his 7th store. $10k/month on his 12th store.** Stated consistently
+in two separate videos. The first 1-2 stores are explicitly "proof of concept" and
+expected to be bad.
+
+## Platform-ban contingency
+Recorded during the US TikTok ban: fall back to **Instagram Reels (named "the new
+main one") and YouTube Shorts**. Get onto any new short-form app early, since
+early adopters get algorithmic push. His framing: "if you didn't diversify to
+different platforms, that's on you."

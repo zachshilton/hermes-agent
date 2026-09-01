@@ -243,32 +243,29 @@ remaining lessons.
 
 ## Source coverage
 
-Built from **15 successfully extracted videos** across both channels, plus 2 of 33
-Whop lessons. What is NOT here is as important as what is.
+Built from **26 successfully extracted videos** across both channels, plus 2 of 33
+Whop lessons. 10 failed. What is NOT here matters as much as what is.
 
 | Source | Status |
 |---|---|
-| Whop: *Automation & Split Testing*, *Priming Your Mind* | Read (video frames) |
-| Whop: the other 31 lessons | Video only -- see `course-map.md` |
-| YT business channel: 11 videos | Full transcripts |
-| YT personal channel: 4 videos | Full transcripts, incl. two 8-hour courses |
-| YT: *How i find niche products ($30k/week)* | **FAILED** x7 attempts |
-| YT: *so you hit your first $10k month... how to scale* | **FAILED** -- caption file returns 0 bytes at source |
-| YT: *Why Dropshipping Will Be DEAD by 2026* | **FAILED** |
-| YT: *$0-$20,000 store breakdown*, *Beginners Guide to $10k/Month* | **FAILED** -- both were the "week one, in order" videos |
-| YT: ~120 remaining videos | Not attempted |
+| Whop: 2 lessons readable as video frames | Read |
+| Whop: the other 31 | Video only -- but see below |
+| YT business channel | 18 extracted |
+| YT personal channel | 8 extracted, incl. two 8-hour courses |
+| 10 videos across both | **FAILED** -- transcript panel never populates |
+| ~110 remaining | Not attempted, mostly lifestyle vlogs |
 
-**The Whop course appears to be duplicated free on YouTube.** Two exact duration
-matches (1:25:31 vs 1:25:32; 1:10:10 vs 1:10:12). If that holds for more lessons,
-the paid course is reachable through transcripts.
+**The paid Whop course is duplicated free on YouTube -- confirmed.** The Mikey
+guest call opens: "This was a guest call that I had in my community." Same
+recording, one second's runtime difference. So the paid lessons are likely
+reachable as free transcripts.
 
-**Two long videos were mostly filler.** The 8-hour "Step By Step Guide on How To
-Hit $10k/Month" is a mindset lecture with zero operational content -- verified by
-keyword-searching the full 537,281 characters. The other 8-hour course is a
-stitched compilation of ~10 videos, roughly half unrelated. **Titles on these
-channels do not reliably indicate content.**
+**Four videos' titles misrepresent their content.** An 8-hour "Step By Step Guide
+to $10k/Month" is a mindset lecture with zero operational content, verified by
+keyword-searching all 537,281 characters. "Advice I Wish I Knew" names no
+mistakes. "How I'd Make My First $100k" contains no ecom tactics at all. And "AI
+dropshipping is dead" argues the opposite of its title. **Do not infer content
+from a title on these channels.**
 
-**Five videos failed** despite full recovery attempts. One had a caption file that
-returns 0 bytes at YouTube's end, so it is unrecoverable rather than flaky. Two of
-the failures were the beginner-sequencing videos, which is why "what to do in week
-one, in order" is thinner here than the rest.
+**Two operators who have each done over $1M disagree** on whether to warm up an
+account at all -- see `contradictions.md`, which now tracks 16 conflicts.

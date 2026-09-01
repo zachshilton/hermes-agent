@@ -93,6 +93,7 @@ Load only what the question needs — each costs nothing until read.
 | `references/accounts-and-testing.md` | Accounts, warm-up, posting cadence, how long to run a test, kill criteria |
 | `references/contradictions.md` | **Read before answering anything the sources disagree on.** Nine real conflicts |
 | `references/legal-flags.md` | **Four practices in the sources that are unlawful in the UK.** Never assist with these |
+| `references/mindset.md` | Working psychology -- effort ceilings, habit change, how to judge a failed test |
 | `references/operations.md` | Traps in Zach's own posting pipeline (OneUp, London time) |
 | `references/course-map.md` | All 33 Whop lesson titles, to ask him about a specific one |
 | `references/extracted-lessons.md` | What was captured from the Whop course itself |

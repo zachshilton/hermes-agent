@@ -58,6 +58,96 @@ synthesis, not something he says.
 Different objects. Novelty in creatives is required; novelty in business model is
 shiny-object syndrome. State the distinction rather than the conflict.
 
+## 5b. When do you need a store?
+
+- Two videos, including the flagship: **"You don't even need a store until you go
+  viral."** Run the product, get orders, sort fulfilment after.
+- "the lazy 1 person business" gives an ordered from-scratch sequence where
+  **step 2 is build the store**, before the social accounts and before any
+  creative exists, and says no step is skippable.
+
+A direct conflict about sequencing, not emphasis. The 4h course sits in between:
+build the site properly BEFORE going viral, for your first 3-5 stores. Best
+reading is that the "no store until viral" line is advice for someone already
+competent, and the ordered sequence is for a beginner -- but he never says that,
+so present both.
+
+## 5c. Is traffic everything, or one of three?
+
+- *"It is traffic. That is all it is."* -- product research and offer optimisation
+  are called meaningless until you can reliably go viral.
+- The three-pillars video: **value, traffic and product are co-equal.**
+- And the market-shift video actively undercuts the first: an operator with
+  30,000-40,000 sessions a week looked traffic-rich, but the sessions were
+  mistargeted. The bottleneck was targeting precision, not traffic volume.
+
+So "get traffic first" and "traffic alone tells you nothing" both appear. The
+resolution SPZ should offer: traffic is the prerequisite skill, but once you have
+it, volume stops being the useful metric and quality takes over.
+
+## 5d. Archive old posts, or leave them?
+
+- The 8h free course: **"archive old posts rather than deleting them"** when
+  switching products -- deleting reportedly hurts the account on Instagram.
+- "$34,035 a Day": keep the account and niche and **"do NOT archive old videos"** --
+  the old failed-product videos are what warmed the account up.
+
+Both agree never to DELETE and never to change niche. They disagree only on
+archiving, and the second gives a reason (warmth) the first does not address.
+
+## 5e. "Link in bio" as a CTA
+
+- The five-step creative ends on a CTA clip prompting a comment.
+- "How To Actually Hit $10k/Month": **do not put "link in bio" in the video** -- it
+  reads as an ad and suppresses reach. Use subtler framing.
+- "$34,035 a Day" resolves it in practice: use ManyChat comment-to-DM instead,
+  which carries a CTA without looking like one, and **point the DM at the product
+  page, not checkout**.
+
+This is the same underlying tension as the CTA contradiction above, and ManyChat
+appears to be his answer to it: every video can carry a CTA without a bio link or
+a separate CTA post.
+
+## 5f. Warm up an account, or post immediately? (the biggest one)
+
+- Multiple videos: **warm up a new account for one to two days** before posting;
+  scroll and engage with niche content first. Account health is named as the
+  reason most creatives underperform.
+- **Mikey ($1M operator, in the guest call): no warm-up at all.** Get the product,
+  film, make the account, post. He explicitly says he does not believe algorithms
+  target new accounts, and his only concern is getting zero views on the very
+  first post.
+
+He also **rejects aged emails**, using fresh ones every cycle from a $5/month
+unlimited-email service, against the aged-Gmail approach others sell.
+
+Two operators who have each done over $1M disagree on a step one of them calls
+essential. Do not present warm-up as settled.
+
+## 5g. How long to persist with a format
+
+- **Cap concept reposts at 3-4, never a 5th** -- the most repeated rule in the
+  corpus, stated in three videos.
+- **Mikey: a hook or creative format may take roughly 100 videos of repetition
+  before it goes viral**, and the guidance is to keep pushing rather than abandon
+  it early.
+
+Possibly a granularity difference -- the cap is on an identical concept, Mikey is
+talking about a format -- but a 3-video cap and a 100-video expectation cannot both
+be applied to the same decision. Ask which one Zach is actually facing.
+
+## 5h. One account or many?
+
+- The billion-views operator posts **twice a day, sometimes once, on a single
+  personal account**, averaging 500,000-800,000 views per video, and explicitly
+  contrasts this with "most people" running multiple accounts at 5-6 posts a day.
+- The product-testing rules say one product across **3 TikTok accounts**, 4-5 posts
+  a day per account.
+
+Reconcilable: his is a **personal brand** account, where format novelty compounds,
+while product accounts are disposable test surfaces. But he presents it as a
+general lesson, so flag the distinction rather than repeating his framing.
+
 ## 6. The same study, two sets of numbers
 
 His protein-flavour choice-overload study appears in both long courses:
