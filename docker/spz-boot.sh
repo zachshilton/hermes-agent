@@ -931,11 +931,31 @@ fi
 #
 # The default is hourly, down from the */30 it ran at for its first months. A
 # firing is not one API call: every one starts a fresh conversation, so the
-# system prompt, SOUL.md, the Hermes core toolset and the manager's ~19 MCP tool
-# schemas are re-sent uncached on every round trip inside it, and the prompt
-# below loops approve_video + scan_video over every pending video. That cost is
-# paid 48 times a day at */30 even when the queue is empty. Hourly halves the
-# floor; the pipeline is unattended, so nothing downstream notices the latency.
+# system prompt, SOUL.md, the Hermes core toolset and the whole spz MCP schema
+# block are re-sent on the first round trip, and the prompt below loops
+# approve_video + scan_video over every pending video.
+#
+# The MCP half of that is the biggest single item and is worth measuring rather
+# than guessing, because it has grown: this comment said "~19 MCP tool schemas"
+# until a recount put it at 41 tools and roughly 5,100 tokens -- 28 dynamic from
+# TOOLS in api/_lib/spzAgent.ts at ~2,700, plus 12 static registerTool blocks in
+# api/mcp.ts at ~2,400. scan_video alone is ~440 and submit_video ~374. Re-derive
+# it rather than trusting this number; the dashboard grows tools and nothing on
+# this side notices:
+#
+#   cd ../spz-dashboard && wc -c api/_lib/spzAgent.ts api/mcp.ts   # rough proxy
+#
+# It cannot be scoped away either. `no_mcp` in a platform_toolsets list drops all
+# MCP servers (tools_config.py:1881), but it is all-or-nothing per server and
+# this job needs three of them, so a cron turn pays for all 41 to use
+# get_pending_videos, approve_video and scan_video. That is the argument for
+# widening the interval rather than trimming the turn.
+#
+# So the floor is roughly 6,800 tokens per firing before any work happens, paid
+# 24 times a day whether or not the queue has anything in it -- and it was 48
+# times at */30. Hourly halved it; business hours only (0 8-20 * * *) would take
+# another 46% off, and the pipeline is unattended, so nothing downstream notices
+# the latency. That is a Railway edit, which is why the schedule is a variable.
 SPZ_CONTENT_OPS_CRON="${SPZ_CONTENT_OPS_CRON:-0 * * * *}"
 
 # Removals run UNCONDITIONALLY, outside the enable check below. This is the
