@@ -956,7 +956,23 @@ fi
 # times at */30. Hourly halved it; business hours only (0 8-20 * * *) would take
 # another 46% off, and the pipeline is unattended, so nothing downstream notices
 # the latency. That is a Railway edit, which is why the schedule is a variable.
-SPZ_CONTENT_OPS_CRON="${SPZ_CONTENT_OPS_CRON:-0 * * * *}"
+# Business hours rather than round the clock, since 2026-09-01. Editors upload
+# during the day, so the overnight firings were polling a queue that nothing had
+# added to since the evening — 11 of the 24 daily firings did the full ~6,800
+# token setup to find nothing. 0 8-20 takes 46% off the floor and the pipeline is
+# unattended, so nothing downstream notices an hour's latency.
+#
+# The hours are London, not UTC: `timezone: "Europe/London"` in the generated
+# config.yaml is what cron/scheduler.py reads, so this window stays 08:00-20:00
+# local across the BST/GMT change without a seasonal edit — the same property the
+# 12:00 roundup relies on.
+#
+# THE DEFAULT ONLY APPLIES IF RAILWAY DOES NOT SET THE VARIABLE. If
+# SPZ_CONTENT_OPS_CRON exists there, it wins and this line is never read — check
+# Railway before concluding a schedule change did not take. That is the same trap
+# HERMES_MODEL has, and it is why the job below is removed and recreated on every
+# boot rather than checked by name.
+SPZ_CONTENT_OPS_CRON="${SPZ_CONTENT_OPS_CRON:-0 8-20 * * *}"
 
 # Removals run UNCONDITIONALLY, outside the enable check below. This is the
 # mirror of the trap this file already documents for renamed jobs, and it bit
