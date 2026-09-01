@@ -656,6 +656,55 @@ else
   TOOLSETS_BLOCK=""
 fi
 
+# Fork-local skills, shipped in the image rather than written to the volume.
+#
+# `skills.external_dirs` (agent/skill_utils.py:420) takes a list of read-only
+# directories scanned alongside $HERMES_HOME/skills. Shipping them this way is
+# deliberate on all three counts:
+#
+#   - IN THE IMAGE, not the volume. A skill written into $HERMES_HOME/skills is
+#     writable by the agent's own skill_manage tool and survives redeploys, so a
+#     model edit silently outlives the commit that was supposed to define it.
+#     An external dir is read-only to the framework, version-controlled here,
+#     and replaced wholesale by the next deploy.
+#   - NO Dockerfile CHANGE. `COPY --link . .` already lands the whole repo at
+#     /opt/hermes, so a new top-level directory ships for free. That matters
+#     because Dockerfile is one of the four files an upstream merge can
+#     conflict on; this adds nothing to that surface.
+#   - CHEAP PER CALL. build_skills_system_prompt (agent/prompt_builder.py:1445)
+#     puts only each skill's name and description in the system prompt; the body
+#     loads on demand through skill_view. A reference file costs nothing until
+#     it is read.
+#
+# Resolved from $0 so the same line works in the container (invoked as
+# `sh /opt/hermes/docker/spz-boot.sh`, giving /opt/hermes) and in the local
+# harness (invoked as `sh docker/spz-boot.sh`, giving the repo root). It must be
+# ABSOLUTE: get_external_skills_dirs resolves a relative entry against
+# HERMES_HOME, not the working directory, so a relative path would point into
+# the volume and find nothing. `cd && pwd` is the POSIX way to absolutize.
+#
+# Gated on the directory actually existing, because a missing external dir is
+# skipped with a debug-level log and nothing else — an emitted path that does
+# not resolve is the silent-failure shape this file keeps running into, so it is
+# better to say so at boot. `SPZ_SKILLS_DIR=none` disables the block entirely,
+# the same escape hatch shape as SPZ_RELAY_CHANNELS=none.
+SPZ_SKILLS_DIR="${SPZ_SKILLS_DIR:-$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)/spz-skills}"
+if [ "${SPZ_SKILLS_DIR}" = "none" ]; then
+  SKILLS_BLOCK=""
+  echo "[spz-boot] Fork skills disabled (SPZ_SKILLS_DIR=none)"
+elif [ -d "${SPZ_SKILLS_DIR}" ]; then
+  # Quoted: a path is a string, and an unquoted one with a stray colon or a
+  # leading digit is the YAML 1.1 coercion trap this file documents elsewhere.
+  SKILLS_BLOCK="skills:
+  external_dirs:
+    - \"${SPZ_SKILLS_DIR}\"
+"
+  echo "[spz-boot] Fork skills dir: ${SPZ_SKILLS_DIR}"
+else
+  SKILLS_BLOCK=""
+  echo "[spz-boot] WARNING: skills dir ${SPZ_SKILLS_DIR} not found - fork skills will be absent"
+fi
+
 # The model block is a MAPPING, not the bare string this file emitted until an
 # OPENAI_API_KEY took the whole fleet down.
 #
@@ -742,7 +791,7 @@ mcp_servers:
     headers:
       Authorization: "Bearer ${SPZ_MCP_TOKEN}"
     timeout: 180
-${VOICE_BLOCK}${TOOLSETS_BLOCK}${PLATFORMS_BLOCK}
+${VOICE_BLOCK}${TOOLSETS_BLOCK}${SKILLS_BLOCK}${PLATFORMS_BLOCK}
 EOF
 
 if [ -n "${SPZ_SOUL_MD}" ]; then

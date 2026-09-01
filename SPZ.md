@@ -35,6 +35,9 @@ first two are still moving:
   directly as root and bypasses the s6 entrypoint entirely (which is why `spz-boot.sh` does its own
   `chown` at the end).
 - `railway.json` — three lines, unchanged since the gateway invocation was first wired up.
+- `spz-skills/` — the fork's own skill tree, shipped in the image and named in the generated
+  config as `skills.external_dirs`. Prose, not code: it changes what the agent knows rather than
+  what the container does, so it is the one entry here that no boot harness can check.
 - `Dockerfile` — two lines, both forced by the deployment target rather than chosen.
   `--extra tts-premium` bakes the ElevenLabs SDK in rather than lazy-installing it into an immutable
   layer (see "ElevenLabs" below); and the upstream `VOLUME [ "/opt/data" ]` instruction is
@@ -44,15 +47,16 @@ first two are still moving:
   metadata — but it is the fork hunk most likely to be silently undone by an upstream merge, and it
   fails the *build* rather than degrading at runtime, so it is not subtle when it goes.
 
-The generated `config.yaml` is the whole fork surface at runtime. It contains exactly six things:
+The generated `config.yaml` is the whole fork surface at runtime. It contains exactly seven things:
 `timezone` (hardcoded `Europe/London`), `model` (a **mapping** of `default` from `${HERMES_MODEL}`,
 defaulting to `anthropic/claude-haiku-4-5` — see "Haiku is the default" below — and `provider`
 from `${SPZ_INFERENCE_PROVIDER}`,
 defaulting to `anthropic` — see "Pin the provider" below; it must not go back to a bare string), a
 `display.platforms.discord` block, the single `mcp_servers.spz`
 entry built from `SPZ_MCP_URL`/`SPZ_MCP_TOKEN` with `timeout: 180`, a `platform_toolsets` block
-scoping what each surface loads, and — only when at least one relay channel id is set —
-`platforms.discord.extra.channel_prompts`. An `stt`/`tts` pair appears as a seventh only when a
+scoping what each surface loads, a `skills.external_dirs` list pointing at the fork's own skills
+(see "Fork skills" below), and — only when at least one relay channel id is set —
+`platforms.discord.extra.channel_prompts`. An `stt`/`tts` pair appears as an eighth only when a
 voice key is present.
 
 **This fork contains almost no Python, and adding more is a last resort.** The working convention,
@@ -119,7 +123,7 @@ cosmetic:
 |---|---|---|
 | `git diff 3a1a3c7 HEAD` | 20 files | Wrong — sweeps in ten files of pure upstream work |
 | `git diff 111544d HEAD` | 9 files | The fork's own surface, but measured over a set that includes this file |
-| the same, plus `-- . ':(exclude)SPZ.md' ':(exclude)CLAUDE.md'` | 7 files, 1122 insertions, 10 deletions | The code surface, and the only row here that holds still |
+| the same, plus `-- . ':(exclude)SPZ.md' ':(exclude)CLAUDE.md'` | 12 files, 1455 insertions, 10 deletions | The code surface, and the only row here that holds still |
 
 Run the first one unrestricted and `usage_pricing.py`, `models.py` and the model catalog look
 fork-touched; re-applying those over a merge would be re-applying upstream's own commits back on top
@@ -150,6 +154,7 @@ arrived in the upstream snapshot and was subsequently edited here can. `git log 
 | `SPZ.md` | this fork (`3af59e8`) | No |
 | `CLAUDE.md` | this fork (`331da16`) | No |
 | `railway.json` | this fork (`a166836`) | No |
+| `spz-skills/` | this fork | No — fork-only, and upstream has no such path |
 | `Dockerfile` | upstream root (`3a1a3c7`) | **Yes** |
 | `docker/stage2-hook.sh` | upstream root (`3a1a3c7`) | **Yes** |
 | `gateway/run.py` | upstream root (`3a1a3c7`) | **Yes** |
@@ -201,7 +206,8 @@ Every variable `spz-boot.sh` alone consumes carries an `SPZ_` prefix: `SPZ_MCP_U
 `SPZ_MCP_TOKEN`, `SPZ_SOUL_MD`, `SPZ_CHANNEL_{TRAINER,CLINIC,MANAGER,CLZ,HOME,APPROVALS}`,
 `SPZ_ROUNDUP_ENABLED`, `SPZ_CONTENT_OPS_POLL`, `SPZ_CONTENT_OPS_CRON`, `SPZ_ROLE`,
 `SPZ_PERSONA_CHANNEL`,
-`SPZ_RELAY_CHANNELS`, `SPZ_STT_PROVIDER`, `SPZ_TTS_PROVIDER`, `SPZ_TTS_VOICE`, `SPZ_TTS_MODEL`.
+`SPZ_RELAY_CHANNELS`, `SPZ_SKILLS_DIR`, `SPZ_STT_PROVIDER`, `SPZ_TTS_PROVIDER`, `SPZ_TTS_VOICE`,
+`SPZ_TTS_MODEL`.
 Cron jobs follow suit: `spz-daily-roundup`, `spz-content-ops-poll`.
 
 The names that stay upstream-spelled do so because the framework reads them, and renaming one fails
@@ -441,6 +447,85 @@ reachable from here: `hermes cron create` has no `--model` flag (it is absent fr
 own `cronjob` tool can write one. The lever that does exist is `HERMES_MODEL` per Railway service,
 which crons honour — but it is service-wide, so a cheap model on `hermes-spz` also makes the
 interactive `#spz` agent cheap.
+
+### Fork skills, and the two caps that make or break one
+
+`spz-skills/` is the fork's own skill tree, shipped in the image and named in the generated
+`config.yaml` as `skills.external_dirs`. It currently holds one skill, `finance/zach-finances`,
+covering Zach's money — what the three MCP finance tools can and cannot see, plus his personal,
+sole-trader and VAT position.
+
+Three properties, each chosen against a specific alternative:
+
+- **In the image, not on the volume.** A skill written to `$HERMES_HOME/skills` is writable by the
+  agent's own `skill_manage` tool and survives every redeploy, so a model edit silently outlives the
+  commit meant to define it. An external dir is read-only to the framework, version-controlled here,
+  and replaced wholesale by the next deploy.
+- **No Dockerfile change.** `COPY --link . .` already lands the whole repo at `/opt/hermes`, so a new
+  top-level directory ships for free — which matters because `Dockerfile` is one of the paths an
+  upstream merge can conflict on, and this adds nothing to that surface.
+- **Config, not Python.** `skills.external_dirs` is read by `get_external_skills_dirs`
+  (`agent/skill_utils.py:420`), so this clears the bar in "This fork contains almost no Python"
+  without going near it.
+
+**The layout is load-bearing and fails silently if you get it wrong.** Category is
+`parts[0]` of the path relative to the external dir, and only when there are at least three parts
+(`tools/skills_tool.py:565-583`) — so it must be
+`<external_dir>/<category>/<skill-name>/SKILL.md`. Put `SKILL.md` one level shallower and the skill
+still loads with no category. A `references/` subdirectory is excluded from discovery as a support
+dir (`iter_skill_index_files`), which is exactly what makes progressive disclosure work: the body
+loads on demand through `skill_view`, so a reference file costs nothing until it is read.
+
+**Two caps decide whether any of this is read, and neither announces itself:**
+
+| Cap | Where | What happens past it |
+|---|---|---|
+| **60 characters** on a skill `description` | `extract_skill_description`, `agent/skill_utils.py:777` | Silently truncated to 57 + `...` in the system-prompt index |
+| ~4000 characters read from `SKILL.md` for frontmatter | `tools/skills_tool.py` scan | Frontmatter past that is not parsed |
+
+The 60-char cap is the one that bites. The description is the *only* thing the model sees before
+deciding whether to load the skill, so every trigger word has to fit inside it. `zach-finances`
+first shipped with a 206-character description and was cut mid-sentence at "what the finance tools
+can and cannot see, ..." — dropping the words "balances", "tax" and "VAT", which are precisely the
+ones a routing decision turns on. Category descriptions in `DESCRIPTION.md` are *not* capped, but
+they ride every call, so keep them short anyway.
+
+**Gate a skill on `requires_toolsets` or the crons pay for it.** The index is rendered from the
+skills on disk regardless of whether the `skills` toolset is loaded — `_skill_should_show`
+(`agent/prompt_builder.py:1398`) filters per skill on frontmatter `conditions`, and nothing else
+suppresses the block. A cron turn takes `SPZ_CRON_TOOLSETS=clarify,memory,todo`, which has no
+`skill_view`, so an ungated skill bills the hourly content-ops poll and the daily roundup for an
+index neither can act on. `metadata.hermes.requires_toolsets: [skills]` fixes it. Measured on a
+fresh process against the generated config:
+
+| Turn | Ungated | Gated on `[skills]` |
+|---|---|---|
+| Discord | ~432 tokens | ~432 tokens |
+| Cron | ~432 tokens | **0** |
+
+**Most of that 432 is not the skill.** About 400 tokens are the framework's own mandatory
+skills preamble, which appears as soon as *any* skill is visible; `zach-finances` itself adds ~35.
+That is the real price of the first skill, and it is worth knowing which side of it this deployment
+starts from — which is a question about the volume, not the repo:
+
+```bash
+# In the container. If this is empty or missing, the skills index costs nothing today
+# and the fork skill introduces the ~400-token preamble.
+ls "$HERMES_HOME/skills"
+```
+
+`stage2-hook.sh` is what creates that directory and syncs the 18 bundled skill packs into it, and
+**Railway's custom start command bypasses `stage2-hook.sh` entirely** — so on a volume that has
+never seen it, the directory does not exist and `build_skills_system_prompt` returns an empty
+string. If it *does* exist, the sync has put 61 skills in the index at roughly **2088 tokens on
+every call**, for GitHub, MLOps, Apple Notes and smart-home packs that cannot do anything on this
+container. That would be a bigger cost item than anything in the toolset section above, and it is
+checkable with the one command.
+
+`SPZ_SKILLS_DIR` overrides the path; the literal `none` omits the block entirely, the same escape
+hatch shape as `SPZ_RELAY_CHANNELS=none`. A path that does not exist is skipped by the framework at
+debug level and nothing else, so `spz-boot.sh` checks for the directory itself and warns at boot
+rather than letting a typo become a skill that is simply never there.
 
 ### One container, and the fleet that used to be four
 
@@ -868,6 +953,17 @@ R="$(mktemp -d)"
 echo "== QUOTED SCALARS: channel_prompts keys must be \"777...\", not 777... =="
 grep -A1 'channel_prompts:' "$R/config.yaml" | cut -c1-60
 
+# --- 4b. fork skills: the block, and the two ways back ----------------------
+echo "== SKILLS: dir resolved absolute, path quoted =="
+sed -n '/^skills:/,/^[a-z]/p' "$SPZ/config.yaml"
+S1="$(mktemp -d)"
+( export HERMES_HOME="$S1" $MCP SPZ_RELAY_CHANNELS=none SPZ_SKILLS_DIR=none; boot skillsoff >/dev/null )
+echo "== SKILLS: SPZ_SKILLS_DIR=none omits the key =="
+grep -q '^skills:' "$S1/config.yaml" && echo "  FAIL: key emitted" || echo "  OK: absent"
+S2="$(mktemp -d)"
+( export HERMES_HOME="$S2" $MCP SPZ_RELAY_CHANNELS=none SPZ_SKILLS_DIR=/nonexistent
+  boot skillsmiss ) | grep -i 'skills dir' || echo "  FAIL: a missing dir must warn, not pass silently"
+
 # --- 5. the way back: `full` must omit the key ALTOGETHER --------------------
 F="$(mktemp -d)"
 ( export HERMES_HOME="$F" $MCP SPZ_RELAY_CHANNELS=none \
@@ -908,6 +1004,16 @@ What each labelled section is actually asking, and why none of the five can be d
   And `SPZ_TOOLSETS=full SPZ_CRON_TOOLSETS=full` must leave the key out of the file altogether: an
   emitted key whose list is empty resolves to a platform with no native tools at all, the opposite
   of what `full` promises, so the way back has to be checked as an absence rather than assumed.
+- **Fork skills** — block 4b. Three things, and the third is the one that would otherwise rot:
+  the emitted path must be **absolute** (`get_external_skills_dirs` resolves a relative entry
+  against `HERMES_HOME`, not the working directory, so a relative path silently points into the
+  volume and finds nothing) and **quoted**; `SPZ_SKILLS_DIR=none` must omit the key rather than
+  emit an empty one; and a path that does not exist must produce a boot warning. The framework
+  skips a missing external dir at debug level and says nothing, so without that warning a typo in a
+  Railway variable presents as a skill the agent simply never mentions. Note this block cannot
+  check the part that actually matters — whether the model *loads* the skill — which is a
+  60-character description away from being wrong and is not observable from the config at all.
+
 - **Idempotency** — block 1, which is why it boots twice into one `HERMES_HOME`. `config.yaml`
   must be byte-identical across the two, and the second run must not create a duplicate cron job.
   Note that "no duplicate" is not "no churn": `spz-content-ops-poll` and `spz-persona-checkin`
