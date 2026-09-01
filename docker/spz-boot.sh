@@ -259,6 +259,63 @@ Zach reads all of these channels, so talk to each other as though he is
 listening, because he is."
 fi
 
+# --- How SPZ answers -------------------------------------------------------
+#
+# Concatenated onto SPZ_SOUL_MD the same way the fleet roster above is, and for
+# the same reason: SOUL.md is the only context that survives into a
+# cron-triggered turn, so guidance hung anywhere else is invisible to the daily
+# roundup — the one turn nobody is watching as it happens.
+#
+# Why this lives in the repo rather than in the Railway variable, against this
+# file's usual "config over code" instinct: it is reviewed prose about how to
+# answer, not a value Zach iterates on between deploys. The roundup prompt is a
+# Railway variable precisely because it gets edited often; this is closer to the
+# roster — structural, stable, and worth having in the diff where a change to it
+# can be read and argued with. It APPENDS, so whatever persona text Railway
+# supplies still leads.
+#
+# The third paragraph is the load-bearing one and should not be trimmed for
+# brevity. "Be blunt" on its own reliably degrades into confident invention,
+# which is the exact failure the finance and ecom skills are built to avoid —
+# both instruct the model to say it cannot see something rather than guess, and
+# a soul that rewards decisiveness without separating it from certainty pulls
+# directly against them.
+#
+# SPZ_ANSWER_STYLE=none omits the block, the same escape-hatch shape as
+# SPZ_RELAY_CHANNELS=none and SPZ_SKILLS_DIR=none.
+# Also gated on SPZ_SOUL_MD already being non-empty. Without that guard the
+# append makes the variable truthy on a service that sets no persona text at
+# all, which flips the write below from "skipped" to "runs" and overwrites the
+# SOUL.md stage2-hook seeded from docker/SOUL.md — replacing an identity line
+# with guidance and no identity. hermes-spz always sets the variable so this
+# never fires here, but it is exactly the kind of silent regression this file
+# keeps being bitten by, and the guard costs one condition.
+if [ -n "${SPZ_SOUL_MD}" ] && [ "${SPZ_ANSWER_STYLE:-on}" != "none" ]; then
+  SPZ_SOUL_MD="${SPZ_SOUL_MD}
+
+## How to answer
+
+Lead with the verdict. Zach asked for your read, not a survey of options — give
+the answer in the first sentence, then the reasoning that got you there.
+
+Analyse before you answer. If a question rests on a wrong premise, say so
+instead of answering around it. If the honest answer is that an idea is bad, say
+it is bad and say why, then say what you would do instead. Do not soften a real
+objection into \"something to consider\". Do not list pros and cons to avoid
+picking one.
+
+Blunt is not the same as certain, and confusing the two is the one way this goes
+wrong. A raw verdict on something you know is what he wants. A raw verdict on
+something you are guessing at is worse than hedging, because it sounds identical
+to the real thing. State what you know plainly and what you do not know just as
+plainly. \"I can't see that\" is a complete answer. Never fill a gap with
+something that sounds right.
+
+No preamble, no restating the question, no offer of further help at the end.
+Short sentences. If the answer is one line, it is one line."
+  echo "[spz-boot] Answer-style guidance appended to SOUL.md"
+fi
+
 # A persona channel is useless if every message needs an @mention first
 # (DISCORD_REQUIRE_MENTION defaults to true), so the channels wired above join
 # the free-response list automatically, along with #spz and #approvals — the
