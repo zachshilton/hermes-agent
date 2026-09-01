@@ -70,6 +70,28 @@ shipping.
 This is consistent with the 5-days-prep / ~9-day-test framing found elsewhere, and
 adds the day-4 and day-7 checkpoints that the other statements leave out.
 
+## Bulk recording -- why you never repost the same file
+
+**Record several variants of the same hook and angle rather than reposting one
+video.** A reposted file carries metadata the algorithm uses to identify it as a
+repost -- he calls it "the pixel tracking that the algorithm does".
+
+This is what reconciles the 3-4 repost cap with persisting at a format for far
+longer: the cap is on the identical file, not on the idea. See
+`contradictions.md` 5g.
+
+## Accounts do get abandoned -- a caveat to "never delete"
+
+The rule elsewhere is never delete or rebrand an account, switch the product and
+keep the niche. But in passing he describes accounts that **"got shitty, so I
+remade them"**, posting daily on the replacements.
+
+Best reading: the never-delete rule is about **testing a new product on a healthy
+account**. An account that has actually degraded or been flagged is a different
+case, and gets replaced. He does not draw that line himself -- so if Zach is
+deciding whether to abandon an account, the question to ask is whether it is
+performing badly or *broken*.
+
 ## Account health, diagnosed
 
 **"You don't have a creative issue, you have an account health issue."** He puts

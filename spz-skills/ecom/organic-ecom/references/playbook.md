@@ -174,6 +174,34 @@ Litmus test: **"If you wouldn't buy your own product, don't sell it."**
 - Keep the AI model congruent with the niche -- an older model for an Elvis
   audience, camo for a military niche.
 
+## Pricing: the one concrete multiple in the corpus
+
+Overheard while sourcing a backpack. Asked his landed cost -- **"25 total... free
+shipping and all that"** -- the answer on where to price it was **"honestly, at
+least 65. Like 70."**
+
+So roughly a **2.6-2.8x multiple on landed cost**, on a physical product with free
+shipping absorbed. This is the only concrete cost-to-price ratio anywhere in the
+52 videos; everything else about pricing is directional. Treat it as one data
+point, not a formula.
+
+Corroborating shape elsewhere: a white-label example sourced at $5 sold at $15,
+and up to $30-45 in supplements and makeup -- a higher multiple at lower absolute
+cost.
+
+## A sourcing method not covered elsewhere
+
+**Mine a UGC creator's comment section for demand on a product that is not sold
+domestically**, then source it from AliExpress with express shipping.
+
+Quoted: "I got them from like UGC creators... and everyone in the comments is one
+of them. There's huge demand... and they don't sell them in the US. I couldn't
+find them anywhere."
+
+The signal being read is a comment section full of people asking where to buy
+something they cannot buy locally -- demand that is already proven and
+structurally unmet.
+
 ## Speed, volume and the market
 
 - **Three to four creatives a day** is the stated output for going viral.

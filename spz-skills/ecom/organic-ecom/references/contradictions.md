@@ -132,9 +132,19 @@ essential. Do not present warm-up as settled.
   before it goes viral**, and the guidance is to keep pushing rather than abandon
   it early.
 
-Possibly a granularity difference -- the cap is on an identical concept, Mikey is
-talking about a format -- but a 3-video cap and a 100-video expectation cannot both
-be applied to the same decision. Ask which one Zach is actually facing.
+**RESOLVED**, by a tactic dropped in passing in a vlog: **bulk recording**.
+
+You do not repost the same file. You record several variants of the same hook and
+angle, because a reposted file shares metadata that the algorithm uses to detect
+reposts -- he describes it as "the pixel tracking that the algorithm does".
+
+So both are right about different things. The **3-4 cap applies to reposting an
+identical video**; the **~100 figure applies to persisting with a format**, using
+fresh recordings each time. Bulk recording is the mechanism that makes the second
+possible without triggering the first.
+
+Quoted: "he gets one shot... he's going to rip like four more of those... opposed
+to just using that same hook as far as metadata goes.
 
 ## 5h. One account or many?
 
