@@ -881,7 +881,7 @@ if [ -n "${SPZ_SOUL_MD}" ]; then
   printf '%s\n' "${SPZ_SOUL_MD}" > "$HERMES_HOME/SOUL.md"
 fi
 
-# Daily 12PM Roundup — only on the instance Zach actually talks to. The guard
+# Daily roundup (2PM London by default) — only on the instance Zach actually talks to. The guard
 # is now SPZ_ROUNDUP_ENABLED, an explicit flag set on hermes-spz alone, rather
 # than a piggyback on whichever credential happened to be unique to that
 # service. That piggyback has broken twice: first as SMS_ALLOWED_USERS, then
@@ -892,7 +892,7 @@ fi
 # variable exists — but that fallback is now honoured only when SPZ_ROLE is spz.
 # Every persona container sets DISCORD_ALLOWED_USERS (Zach has to be allowed to
 # talk to his own agent), so an unnarrowed fallback would hand all four of them
-# a 12PM roundup cron posting into their own channel. The guard itself is
+# a daily roundup cron posting into their own channel. The guard itself is
 # untouched and still keys on SPZ_ROUNDUP_ENABLED — SPZ_ROLE only gates the
 # deprecated pre-rename fallback, and once that fallback is dropped this becomes
 # two lines to delete. "timezone: Europe/London"
@@ -934,14 +934,39 @@ if [ -z "${SPZ_ROUNDUP_GUARD}" ]; then
   hermes cron remove spz-daily-roundup >/dev/null 2>&1 || true
 fi
 
+# The hour is a variable for the same reason SPZ_CONTENT_OPS_CRON is: when to
+# post is a preference that will be revisited, and the convention here is to
+# reach for config before code. Europe/London, because timezone: is set in the
+# generated config.yaml above and cron/scheduler.py reads it — so 14 means 2PM
+# local across the BST/GMT change, with no seasonal edit.
+#
+# AS ON THE POLL, RAILWAY WINS. If SPZ_ROUNDUP_CRON exists there, this default
+# is never read — check the variable before concluding a schedule change did not
+# take.
+SPZ_ROUNDUP_CRON="${SPZ_ROUNDUP_CRON:-0 14 * * *}"
+
 if [ -n "${SPZ_ROUNDUP_GUARD}" ]; then
-  if ! hermes cron list --all 2>&1 | grep -q "Name:      spz-daily-roundup"; then
-    hermes cron create "0 12 * * *" \
-      "Call get_daily_roundup_text, then post its exact returned text — no changes, additions, or commentary of your own." \
-      --name spz-daily-roundup \
-      --deliver "discord" \
-      || echo "[spz-boot] Warning: failed to create spz-daily-roundup cron job"
-  fi
+  # REMOVED AND RECREATED, not created only when absent. The name check this
+  # replaces asked only whether spz-daily-roundup EXISTED, never whether it
+  # still matched what this file says — so its schedule was pinned to whatever
+  # the first boot of that container wrote, and editing the hour here would have
+  # looked like it worked while changing nothing on any already-running service.
+  #
+  # That is not a hypothetical: it is exactly how a 30-minute content-ops poll
+  # outlived the decision to widen it, and why that job was switched to this
+  # shape. Moving the roundup from 12PM to 2PM is the first schedule change this
+  # job has ever had, and under the old shape it would have been the second
+  # instance of the same silent failure.
+  #
+  # Nothing is lost by rebuilding it: this is an absolute cron expression, so
+  # the next run is the next 2PM regardless of when the container last started.
+  hermes cron remove spz-daily-roundup >/dev/null 2>&1 || true
+  hermes cron create "${SPZ_ROUNDUP_CRON}" \
+    "Call get_daily_roundup_text, then post its exact returned text — no changes, additions, or commentary of your own." \
+    --name spz-daily-roundup \
+    --deliver "discord" \
+    && echo "[spz-boot] Daily roundup scheduled (${SPZ_ROUNDUP_CRON})" \
+    || echo "[spz-boot] Warning: failed to create spz-daily-roundup cron job"
 fi
 
 # Content-ops poll — only on hermes-manager (SPZ_CONTENT_OPS_POLL is only ever

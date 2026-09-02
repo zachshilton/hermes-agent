@@ -556,7 +556,9 @@ rather than letting a typo become a skill that is simply never there.
 SPZ runs as a single Railway service, `hermes-spz`, with one Discord bot answering `#spz` and
 `#approvals` — though `#approvals` now has nothing to carry, since the dashboard's approval queue
 was removed and no longer posts requests there (see the note on `SPZ_CHANNEL_APPROVALS` below). It
-owns both crons: the 12PM roundup and the hourly content-ops poll. That is the whole deployment.
+owns both crons: the 2PM roundup (`SPZ_ROUNDUP_CRON`, default `0 14 * * *`) and the business-hours
+content-ops poll (`SPZ_CONTENT_OPS_CRON`, default `0 8-20 * * *`). Both are removed and recreated on every
+boot, so a schedule edit here actually takes — see the note on renamed jobs above. That is the whole deployment.
 
 It was not always. For a stretch each persona — The Trainer, The Medical Team, The Manager, CLZ —
 was moving onto its own Railway service with its own bot and its own `SOUL.md`, scoped to its own
