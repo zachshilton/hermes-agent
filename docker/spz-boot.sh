@@ -830,11 +830,36 @@ fi
 # platform key alone (ChannelOverride carries only model/provider/system_prompt),
 # so this quietens #spz too. That is the accepted cost — there is no per-channel
 # layer to hang it on.
+#
+# busy_steer_ack_enabled is the fifth of these and is NOT part of any tier, so
+# it stayed on while the four above were turned off: it is read straight from
+# _GLOBAL_DEFAULTS (display_config.py:54), where it defaults True. It posts
+# "⏩ Steered into current run" as its own message whenever a message sent
+# mid-turn is injected into the running one — an echo confirming delivery, not
+# anything SPZ said. Off, the text still reaches the run; only the confirmation
+# goes.
+#
+# The other ⏳ notices in run.py (5572-5582) are deliberately KEPT. They fire
+# when a message is queued rather than steered, and they are the only signal
+# that it landed at all — suppressing those would make a message sent mid-turn
+# vanish silently, which is worse than the noise it saves.
+#
+# cron.wrap_response is the one that mattered most here, and it is not a display
+# setting at all — it lives at the top level and is read by cron/scheduler.py
+# (~line 1446), defaulting True. Every cron delivery was wrapped in a
+# "Cronjob Response: <name>" header, a "(job_id: ...)" line, a ------------- rule
+# and a trailing "To stop or manage this job, send me a new message" footer.
+# On the daily roundup that directly contradicts the job's own prompt, which
+# says to post the returned text with no changes, additions or commentary: the
+# agent obeyed and the scheduler wrapped it anyway. False delivers the content
+# alone.
 cat > "$HERMES_HOME/config.yaml" <<EOF
 timezone: "Europe/London"
 model:
   default: "${HERMES_MODEL:-anthropic/claude-haiku-4-5}"
   provider: "${SPZ_INFERENCE_PROVIDER:-anthropic}"
+cron:
+  wrap_response: false
 display:
   platforms:
     discord:
@@ -842,6 +867,7 @@ display:
       interim_assistant_messages: false
       long_running_notifications: false
       busy_ack_detail: false
+      busy_steer_ack_enabled: false
 mcp_servers:
   spz:
     url: "${SPZ_MCP_URL}"

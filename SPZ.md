@@ -47,16 +47,18 @@ first two are still moving:
   metadata — but it is the fork hunk most likely to be silently undone by an upstream merge, and it
   fails the *build* rather than degrading at runtime, so it is not subtle when it goes.
 
-The generated `config.yaml` is the whole fork surface at runtime. It contains exactly seven things:
+The generated `config.yaml` is the whole fork surface at runtime. It contains exactly eight things:
 `timezone` (hardcoded `Europe/London`), `model` (a **mapping** of `default` from `${HERMES_MODEL}`,
 defaulting to `anthropic/claude-haiku-4-5` — see "Haiku is the default" below — and `provider`
 from `${SPZ_INFERENCE_PROVIDER}`,
-defaulting to `anthropic` — see "Pin the provider" below; it must not go back to a bare string), a
+defaulting to `anthropic` — see "Pin the provider" below; it must not go back to a bare string),
+`cron.wrap_response: false` (see the display section below — it is not a display setting, but it is
+there for the same reason), a
 `display.platforms.discord` block, the single `mcp_servers.spz`
 entry built from `SPZ_MCP_URL`/`SPZ_MCP_TOKEN` with `timeout: 180`, a `platform_toolsets` block
 scoping what each surface loads, a `skills.external_dirs` list pointing at the fork's own skills
 (see "Fork skills" below), and — only when at least one relay channel id is set —
-`platforms.discord.extra.channel_prompts`. An `stt`/`tts` pair appears as an eighth only when a
+`platforms.discord.extra.channel_prompts`. An `stt`/`tts` pair appears as a ninth only when a
 voice key is present.
 
 **This fork contains almost no Python, and adding more is a last resort.** The working convention,
@@ -269,13 +271,35 @@ Four conventions in `spz-boot.sh`, each of which has caused a silent failure:
 
 ### The Discord display block, and why it is per-platform
 
-`spz-boot.sh` emits four `display.platforms.discord` settings — `tool_progress: "off"`,
-`interim_assistant_messages: false`, `long_running_notifications: false`, `busy_ack_detail: false`.
+`spz-boot.sh` emits five `display.platforms.discord` settings — `tool_progress: "off"`,
+`interim_assistant_messages: false`, `long_running_notifications: false`, `busy_ack_detail: false`,
+`busy_steer_ack_enabled: false`.
 Discord is the framework's most verbose display tier by default (`_TIER_HIGH` in
 `gateway/display_config.py`), and with no display block the persona channels narrated the relay they
 exist to hide: a `⚙️ mcp__spz__instruct_trainer` bubble, any preamble SPZ emitted alongside the tool
-call as its own message, a `⏳ Working` heartbeat, none of it cleaned up. These four leave the
+call as its own message, a `⏳ Working` heartbeat, none of it cleaned up. These leave the
 channel showing the question and the answer.
+
+**The fifth is not in any tier, which is why it outlived the other four.** `_TIER_LOW` does not
+name `busy_steer_ack_enabled`, so it is read straight from `_GLOBAL_DEFAULTS`
+(`display_config.py:54`) where it defaults `True` — turning the display tier down could never reach
+it. It posts `⏩ Steered into current run` as its own message when a message sent mid-turn is
+injected into the running one. Off, the text still reaches the run; only the echo goes.
+
+**The other `⏳` notices are deliberately kept** (`gateway/run.py:5572-5582`). They fire when a
+message is *queued* rather than steered, and they are the only evidence it landed at all —
+suppressing them would make a mid-turn message vanish silently, which is a worse failure than the
+noise it saves.
+
+**`cron.wrap_response: false` is the one that actually mattered, and it is not a display setting.**
+It sits at the top level of `config.yaml` and is read by `cron/scheduler.py` (~line 1446),
+defaulting **True** — so it was never touched by the display block above and quietly wrapped every
+cron delivery in a `Cronjob Response: <name>` header, a `(job_id: …)` line, a `-------------` rule,
+and a trailing `To stop or manage this job, send me a new message…` footer. On `spz-daily-roundup`
+that flatly contradicts the job's own prompt, which says to post the returned text with *no changes,
+additions, or commentary*: the agent obeyed and the scheduler wrapped it anyway, so the instruction
+looked broken while being followed exactly. This is the same shape as the `tool_progress` trap —
+a setting whose default adds text, invisible from the prose that governs the agent.
 
 Display settings resolve on the **platform** key alone — `ChannelOverride` carries only
 model/provider/system_prompt, so there is no per-channel layer to hang them on. That means this
