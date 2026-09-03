@@ -115,7 +115,8 @@ fetch regardless.
 **The graft commit is not the fork point, and diffing against it is the mistake this section used to
 invite.** Seven upstream commits follow `3a1a3c7` — the GPT-5.6 registration series, authored by
 Kshitij Kapoor and rob-maron, touching `agent/model_metadata.py`, `agent/usage_pricing.py`, four
-files under `hermes_cli/`, two under `tests/hermes_cli/`, and `website/static/api/model-catalog.json`.
+files under `hermes_cli/`, two under `tests/hermes_cli/`, `agent/agent_init.py`,
+`agent/auxiliary_client.py`, and `website/static/api/model-catalog.json` — eleven files in all.
 None of it is ours. **The true fork point is `111544d`**, the last commit not authored by Zach
 Shilton, and `git log --format='%h %an' | grep -v 'Zach Shilton' | head -1` is how to re-derive it
 after the next upstream catch-up rather than trusting this hash forever. The difference is not
@@ -123,9 +124,9 @@ cosmetic:
 
 | Baseline | Reports | Verdict |
 |---|---|---|
-| `git diff 3a1a3c7 HEAD` | 20 files | Wrong — sweeps in ten files of pure upstream work |
-| `git diff 111544d HEAD` | 9 files | The fork's own surface, but measured over a set that includes this file |
-| the same, plus `-- . ':(exclude)SPZ.md' ':(exclude)CLAUDE.md'` | 28 files, 3318 insertions, 10 deletions | The code surface, and the only row here that holds still |
+| `git diff 3a1a3c7 HEAD` | eleven files more than the row below | Wrong — sweeps in the upstream work listed above |
+| `git diff 111544d HEAD` | the fork's whole surface | Right baseline, wrong set: it counts this file, and `spz-skills/`, which are both prose |
+| the same, plus `-- . ':(exclude)SPZ.md' ':(exclude)CLAUDE.md' ':(exclude)spz-skills'` | 7 files, 1315 insertions, 10 deletions | The code surface, and the only row here that holds still |
 
 Run the first one unrestricted and `usage_pricing.py`, `models.py` and the model catalog look
 fork-touched; re-applying those over a merge would be re-applying upstream's own commits back on top
@@ -134,13 +135,18 @@ byte-identical from either baseline, because none of the seven commits touched t
 *habit* of reaching for `3a1a3c7` does not.
 
 **A total that counts `SPZ.md` can never be right at rest, because writing the number changes the
-number.** The first two rows carry file counts only for that reason. Their insertion totals read
-2003, then 2105, then 2131 — each recount dated by its own edit, by exactly the lines that edit
-added, and each one true for about the length of one commit. That is not drift to be corrected
-again; it is the wrong thing to measure. The third row is the way out: a pathspec excluding this
-file and `CLAUDE.md` measures the code alone, so it moves only when code moves, and it is the only
-figure here worth quoting. Re-run `git diff --stat` rather than trusting even that one, the same way
-the fork point above is re-derived rather than remembered; the shape of the claim — which files can
+number.** The first two rows once carried file counts for that reason — the theory being that a
+file count is the stable half and only the insertion total moves. That theory was wrong, and this
+table proved it: those rows read 20 and 9 files, and by the time anyone checked they were 42 and 31.
+Their insertion totals had already read 2003, then 2105, then 2131 — each recount dated by its own
+edit, by exactly the lines that edit added, and each one true for about the length of one commit.
+Neither half was measuring code. **`spz-skills/` is what settles it**: a skill tree is prose, it
+grows by hundreds of lines at a time, and it moved every figure in this table without one line of
+code changing. So the exclusion list has to name it alongside this file. The third row is the way
+out: a pathspec excluding `SPZ.md`, `CLAUDE.md` and `spz-skills/` measures the code alone, so it
+moves only when code moves, and it is the only figure here worth quoting. Re-run `git diff --stat`
+rather than trusting even that one, the same way the fork point above is re-derived rather than
+remembered; the shape of the claim — which files can
 conflict, and that the Python half is eight small hunks — is what is meant to survive, not the
 arithmetic.
 
@@ -152,7 +158,7 @@ arrived in the upstream snapshot and was subsequently edited here can. `git log 
 
 | Fork-touched file | Added by | Can conflict? |
 |---|---|---|
-| `docker/spz-boot.sh` | this fork (`299a14c`) | No — fork-only, and 932 lines of it |
+| `docker/spz-boot.sh` | this fork (`299a14c`) | No — fork-only, and by far the largest thing here |
 | `SPZ.md` | this fork (`3af59e8`) | No |
 | `CLAUDE.md` | this fork (`331da16`) | No |
 | `railway.json` | this fork (`a166836`) | No |
@@ -475,9 +481,11 @@ interactive `#spz` agent cheap.
 ### Fork skills, and the two caps that make or break one
 
 `spz-skills/` is the fork's own skill tree, shipped in the image and named in the generated
-`config.yaml` as `skills.external_dirs`. It currently holds one skill, `finance/zach-finances`,
-covering Zach's money — what the three MCP finance tools can and cannot see, plus his personal,
-sole-trader and VAT position.
+`config.yaml` as `skills.external_dirs`. It holds two skills. `finance/zach-finances` covers Zach's
+money — what the three MCP finance tools can and cannot see, plus his personal, sole-trader and VAT
+position. `ecom/organic-ecom` covers the stores — ZenPup and Hushora, captions, posting and what is
+actually growing them — and is much the larger of the two, at a dozen-odd reference files against
+four. Re-derive rather than trusting that count: `ls -d spz-skills/*/*/`.
 
 Three properties, each chosen against a specific alternative:
 
@@ -529,7 +537,10 @@ fresh process against the generated config:
 
 **Most of that 432 is not the skill.** About 400 tokens are the framework's own mandatory
 skills preamble, which appears as soon as *any* skill is visible; `zach-finances` itself adds ~35.
-That is the real price of the first skill, and it is worth knowing which side of it this deployment
+**Measured when `zach-finances` was the only skill**, so the 432 now understates the Discord row by
+roughly whatever `organic-ecom`'s own description and index line cost — the ~400 does not repeat,
+which is the point, but each additional skill adds its own ~35. The preamble is the real price of
+the first skill, and it is worth knowing which side of it this deployment
 starts from — which is a question about the volume, not the repo:
 
 ```bash
@@ -1045,8 +1056,14 @@ What each labelled section is actually asking, and why none of the five can be d
   Note that "no duplicate" is not "no churn": `spz-content-ops-poll` and `spz-persona-checkin`
   deliberately remove and recreate themselves on every boot (see the rule above), so expect a
   remove+create pair for each in the stub log — the check is `sort "$SPZ/.stub-cron-jobs"` showing
-  one line per name at the end, not one create in the log. `spz-daily-roundup` is the opposite
-  shape: created by name check, so boot 2 should show `hermes cron list --all` and no second create.
+  one line per name at the end, not one create in the log. **`spz-daily-roundup` now has that same
+  shape and no longer is the exception this bullet used to describe.** It was created by name check
+  until `cd2238e` moved it to 2PM, which is exactly when the name check became the bug — it asked
+  only whether the job existed, never whether its schedule still matched this file, so the hour was
+  pinned to whatever the container's first boot wrote. Boot 2 therefore shows a remove+create pair
+  for it too, and no `hermes cron list` at all. A run that shows one create per name and two jobs at
+  the end is correct; treating the roundup's recreate as a duplicate is reading this bullet's old
+  version.
 
 Keep it **POSIX sh**. The shebang is `#!/bin/sh` and `railway.json` invokes it as
 `sh /opt/hermes/docker/spz-boot.sh`, so bashisms — `[[ ]]`, arrays, `local`, `+=` — break it in the
