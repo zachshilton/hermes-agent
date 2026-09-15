@@ -844,6 +844,32 @@ fi
 # that it landed at all — suppressing those would make a message sent mid-turn
 # vanish silently, which is worse than the noise it saves.
 #
+# THE TIMEZONE IS Asia/Dubai, AND IT IS THE ONE CLOCK THIS CONTAINER HAS.
+# hermes_time.now() resolves HERMES_TIMEZONE, then this key, then the server's
+# local zone (hermes_time.py), and cron/jobs.py anchors every schedule to
+# whatever that returns — there is no per-job timezone flag to reach for. So one
+# zone has to be picked, and every job on this container is then pinned in it.
+#
+# It was Europe/London until the roundup was asked to arrive at 2PM ABU DHABI
+# time. Abu Dhabi observes UTC+4 year-round and London does not, so no London
+# expression names a fixed Abu Dhabi hour: `0 10 * * *` London is 2PM in Abu
+# Dhabi through GMT and 1PM through BST. Naming the zone the reader is in is the
+# only version of this that survives the March and October switches without a
+# seasonal edit — which is the same property the roundup already relied on when
+# both it and the reader were in London, not a new idea.
+#
+# The cost lands on spz-content-ops-poll, which wanted a London window and now
+# expresses it in Dubai hours (see SPZ_CONTENT_OPS_CRON below). That is the
+# right job to make it: an unattended pipeline poll can absorb an hour's
+# seasonal drift, and its own comment says so. A roundup a person reads at a
+# particular time cannot.
+#
+# NOTE HERMES_TIMEZONE WINS OVER THIS KEY. Nothing here sets it, so this line is
+# live today — but if it is ever set on Railway, this becomes dead config and
+# the schedules below silently mean something else. Same trap as HERMES_MODEL
+# and SPZ_ROUNDUP_CRON: check the variable before concluding an edit here did
+# not take.
+#
 # cron.wrap_response is the one that mattered most here, and it is not a display
 # setting at all — it lives at the top level and is read by cron/scheduler.py
 # (~line 1446), defaulting True. Every cron delivery was wrapped in a
@@ -854,7 +880,7 @@ fi
 # agent obeyed and the scheduler wrapped it anyway. False delivers the content
 # alone.
 cat > "$HERMES_HOME/config.yaml" <<EOF
-timezone: "Europe/London"
+timezone: "Asia/Dubai"
 model:
   default: "${HERMES_MODEL:-anthropic/claude-haiku-4-5}"
   provider: "${SPZ_INFERENCE_PROVIDER:-anthropic}"
@@ -881,7 +907,7 @@ if [ -n "${SPZ_SOUL_MD}" ]; then
   printf '%s\n' "${SPZ_SOUL_MD}" > "$HERMES_HOME/SOUL.md"
 fi
 
-# Daily roundup (2PM London by default) — only on the instance Zach actually talks to. The guard
+# Daily roundup (2PM Abu Dhabi by default) — only on the instance Zach actually talks to. The guard
 # is now SPZ_ROUNDUP_ENABLED, an explicit flag set on hermes-spz alone, rather
 # than a piggyback on whichever credential happened to be unique to that
 # service. That piggyback has broken twice: first as SMS_ALLOWED_USERS, then
@@ -895,9 +921,10 @@ fi
 # a daily roundup cron posting into their own channel. The guard itself is
 # untouched and still keys on SPZ_ROUNDUP_ENABLED — SPZ_ROLE only gates the
 # deprecated pre-rename fallback, and once that fallback is dropped this becomes
-# two lines to delete. "timezone: Europe/London"
-# above means this literal 12:00 stays correct across the BST/GMT clock change
-# year-round — no manual seasonal nudge like the old Vercel cron needed.
+# two lines to delete. "timezone: Asia/Dubai"
+# above means this literal 14:00 is 2PM in Abu Dhabi year-round — Abu Dhabi
+# keeps UTC+4 through both the BST/GMT switches, so there is no seasonal nudge
+# to forget here the way the old Vercel cron needed one.
 # Idempotent: checked by name so a container restart never creates a duplicate.
 #
 # Delivery goes to DISCORD_HOME_CHANNEL (#spz) via the platform's registered
@@ -936,13 +963,20 @@ fi
 
 # The hour is a variable for the same reason SPZ_CONTENT_OPS_CRON is: when to
 # post is a preference that will be revisited, and the convention here is to
-# reach for config before code. Europe/London, because timezone: is set in the
+# reach for config before code. Asia/Dubai, because timezone: is set in the
 # generated config.yaml above and cron/scheduler.py reads it — so 14 means 2PM
-# local across the BST/GMT change, with no seasonal edit.
+# in Abu Dhabi, fixed, since that zone has no daylight saving to shift under it.
+#
+# THE EXPRESSION DID NOT MOVE WHEN THE ZONE DID, and that is the point: 14 meant
+# 2PM before and means 2PM now. Anyone reading `0 14 * * *` on its own will
+# assume London, because that is what it meant for this job's whole life — the
+# zone is the change, not the hour.
 #
 # AS ON THE POLL, RAILWAY WINS. If SPZ_ROUNDUP_CRON exists there, this default
 # is never read — check the variable before concluding a schedule change did not
-# take.
+# take. That check matters more than usual here: a Railway SPZ_ROUNDUP_CRON set
+# back when the container ran on London time is still a London-shaped hour, and
+# it is now being read as Abu Dhabi.
 SPZ_ROUNDUP_CRON="${SPZ_ROUNDUP_CRON:-0 14 * * *}"
 
 if [ -n "${SPZ_ROUNDUP_GUARD}" ]; then
@@ -1013,17 +1047,32 @@ fi
 # token setup to find nothing. 0 8-20 takes 46% off the floor and the pipeline is
 # unattended, so nothing downstream notices an hour's latency.
 #
-# The hours are London, not UTC: `timezone: "Europe/London"` in the generated
-# config.yaml is what cron/scheduler.py reads, so this window stays 08:00-20:00
-# local across the BST/GMT change without a seasonal edit — the same property the
-# 12:00 roundup relies on.
+# THE WINDOW IS STILL THE LONDON WORKING DAY; ONLY THE NUMBERS MOVED. It read
+# `0 8-20` while `timezone:` was Europe/London. That key is Asia/Dubai now (see
+# the config.yaml block above, and why the roundup forced it), and this container
+# has exactly one clock — cron/jobs.py anchors every job to hermes_time.now()
+# and there is no per-job timezone flag — so an unchanged `0 8-20` would have
+# quietly become 08:00-20:00 Dubai, which is 04:00-16:00 in London: the whole
+# London evening dropped, for a reason that has nothing to do with when editors
+# upload.
+#
+# 11-23 Dubai is 08:00-20:00 London exactly through BST, and 07:00-19:00 through
+# GMT. So the window this job was actually given is preserved for the months it
+# was chosen in, and drifts an hour earlier in winter — same count of firings,
+# same 46% saved. This job is the right one to carry that drift: it is
+# unattended, the comment above already says nothing downstream notices an
+# hour's latency, and the alternative was to put the drift on a roundup a person
+# reads at a fixed time, which is the thing that cannot absorb it.
 #
 # THE DEFAULT ONLY APPLIES IF RAILWAY DOES NOT SET THE VARIABLE. If
 # SPZ_CONTENT_OPS_CRON exists there, it wins and this line is never read — check
 # Railway before concluding a schedule change did not take. That is the same trap
 # HERMES_MODEL has, and it is why the job below is removed and recreated on every
-# boot rather than checked by name.
-SPZ_CONTENT_OPS_CRON="${SPZ_CONTENT_OPS_CRON:-0 8-20 * * *}"
+# boot rather than checked by name. Check it here especially: a value set on
+# Railway while this container ran on London time is still London-shaped hours,
+# and the timezone change means they are now read as Dubai — a stale `0 8-20`
+# there is the 04:00-16:00 London window this line exists to avoid.
+SPZ_CONTENT_OPS_CRON="${SPZ_CONTENT_OPS_CRON:-0 11-23 * * *}"
 
 # Removals run UNCONDITIONALLY, outside the enable check below. This is the
 # mirror of the trap this file already documents for renamed jobs, and it bit

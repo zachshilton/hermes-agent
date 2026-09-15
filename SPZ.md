@@ -48,7 +48,8 @@ first two are still moving:
   fails the *build* rather than degrading at runtime, so it is not subtle when it goes.
 
 The generated `config.yaml` is the whole fork surface at runtime. It contains exactly eight things:
-`timezone` (hardcoded `Europe/London`), `model` (a **mapping** of `default` from `${HERMES_MODEL}`,
+`timezone` (hardcoded `Asia/Dubai` — see "One container" below for why it is Abu Dhabi and not
+London, and note `HERMES_TIMEZONE` overrides it), `model` (a **mapping** of `default` from `${HERMES_MODEL}`,
 defaulting to `anthropic/claude-haiku-4-5` — see "Haiku is the default" below — and `provider`
 from `${SPZ_INFERENCE_PROVIDER}`,
 defaulting to `anthropic` — see "Pin the provider" below; it must not go back to a bare string),
@@ -568,8 +569,22 @@ SPZ runs as a single Railway service, `hermes-spz`, with one Discord bot answeri
 `#approvals` — though `#approvals` now has nothing to carry, since the dashboard's approval queue
 was removed and no longer posts requests there (see the note on `SPZ_CHANNEL_APPROVALS` below). It
 owns both crons: the 2PM roundup (`SPZ_ROUNDUP_CRON`, default `0 14 * * *`) and the business-hours
-content-ops poll (`SPZ_CONTENT_OPS_CRON`, default `0 8-20 * * *`). Both are removed and recreated on every
+content-ops poll (`SPZ_CONTENT_OPS_CRON`, default `0 11-23 * * *`). Both are removed and recreated on every
 boot, so a schedule edit here actually takes — see the note on renamed jobs above. That is the whole deployment.
+
+**One container means one clock, and it is `Asia/Dubai`.** `cron/jobs.py` anchors every job to
+`hermes_time.now()` and there is no per-job timezone flag, so the `timezone` key in the generated
+`config.yaml` pins both jobs at once — whichever zone it names, anything wanted in the other one
+drifts an hour twice a year. It is Abu Dhabi because the roundup is read by a person at a stated
+time and Abu Dhabi keeps UTC+4 year-round, so `0 14` is 2PM there with no seasonal edit; no London
+expression can say that, since `0 10` London is 2PM in Abu Dhabi through GMT and 1PM through BST.
+The poll absorbs the drift instead, which is why its default reads `0 11-23` rather than the
+`0 8-20` it had under London — 11-23 Dubai is 08:00-20:00 London through BST and 07:00-19:00
+through GMT, so its real window is preserved and it is an unattended job that its own comment says
+notices no latency. **`HERMES_TIMEZONE` on Railway would override the config key and silently
+re-point both**, and a `SPZ_ROUNDUP_CRON`/`SPZ_CONTENT_OPS_CRON` set on Railway back when the
+container ran on London is still a London-shaped hour now being read as Dubai — check all three
+before concluding a schedule is what these defaults say.
 
 It was not always. For a stretch each persona — The Trainer, The Medical Team, The Manager, CLZ —
 was moving onto its own Railway service with its own bot and its own `SOUL.md`, scoped to its own
