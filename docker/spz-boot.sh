@@ -1114,7 +1114,7 @@ if [ -n "${SPZ_CONTENT_OPS_POLL:-${CONTENT_OPS_POLL_ENABLED}}" ]; then
   # top of the hour no matter when the container last started.
   hermes cron remove spz-content-ops-poll >/dev/null 2>&1 || true
   hermes cron create "${SPZ_CONTENT_OPS_CRON}" \
-    "Call get_pending_videos for faiz, arif, and taha. For each video returned, call approve_video with its details, then scan_video with its drive link — that single follow-up call transcribes it, checks sponsor/topic alignment, resolves sponsorship, and drafts captions for every platform in its category automatically. Do this for every pending video found, without asking me first. If a video errors, skip it and continue with the rest." \
+    "Call get_pending_videos for arif and taha. For each video returned, call approve_video with its details, then scan_video with its drive link — that single follow-up call transcribes it, checks sponsor/topic alignment, resolves sponsorship, and drafts captions for every platform in its category automatically. Do this for every pending video found, without asking me first. If a video errors, skip it and continue with the rest." \
     --name spz-content-ops-poll \
     && echo "[spz-boot] Content-ops poll scheduled (${SPZ_CONTENT_OPS_CRON})" \
     || echo "[spz-boot] Warning: failed to create spz-content-ops-poll cron job"
