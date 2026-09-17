@@ -127,7 +127,7 @@ cosmetic:
 |---|---|---|
 | `git diff 3a1a3c7 HEAD` | eleven files more than the row below | Wrong — sweeps in the upstream work listed above |
 | `git diff 111544d HEAD` | the fork's whole surface | Right baseline, wrong set: it counts this file, and `spz-skills/`, which are both prose |
-| the same, plus `-- . ':(exclude)SPZ.md' ':(exclude)CLAUDE.md' ':(exclude)spz-skills'` | 7 files, 1315 insertions, 10 deletions | The code surface, and the only row here that holds still |
+| the same, plus `-- . ':(exclude)SPZ.md' ':(exclude)CLAUDE.md' ':(exclude)spz-skills'` | 7 files, 1364 insertions, 10 deletions (re-derived at `31bb8ea`; it read 1315 before the answer-style and Dubai commits) | The code surface, and the only row here that holds still |
 
 Run the first one unrestricted and `usage_pricing.py`, `models.py` and the model catalog look
 fork-touched; re-applying those over a merge would be re-applying upstream's own commits back on top
@@ -215,7 +215,7 @@ Every variable `spz-boot.sh` alone consumes carries an `SPZ_` prefix: `SPZ_MCP_U
 `SPZ_MCP_TOKEN`, `SPZ_SOUL_MD`, `SPZ_CHANNEL_{TRAINER,CLINIC,MANAGER,CLZ,HOME,APPROVALS}`,
 `SPZ_ROUNDUP_ENABLED`, `SPZ_CONTENT_OPS_POLL`, `SPZ_CONTENT_OPS_CRON`, `SPZ_ROLE`,
 `SPZ_PERSONA_CHANNEL`,
-`SPZ_RELAY_CHANNELS`, `SPZ_SKILLS_DIR`, `SPZ_STT_PROVIDER`, `SPZ_TTS_PROVIDER`, `SPZ_TTS_VOICE`,
+`SPZ_RELAY_CHANNELS`, `SPZ_SKILLS_DIR`, `SPZ_ANSWER_STYLE`, `SPZ_STT_PROVIDER`, `SPZ_TTS_PROVIDER`, `SPZ_TTS_VOICE`,
 `SPZ_TTS_MODEL`.
 Cron jobs follow suit: `spz-daily-roundup`, `spz-content-ops-poll`.
 
@@ -460,7 +460,13 @@ Three things that make this safe, each of which would otherwise look like a bug:
 - **MCP tools are never at risk.** `_get_platform_tools` unions every globally-enabled MCP server
   back in unless the list names one explicitly or carries the `no_mcp` sentinel. Scoping the native
   side leaves the whole `spz` dashboard surface intact — which is the only surface these agents
-  actually use, and the reason the lists can afford to be this short.
+  actually use, and the reason the lists can afford to be this short. **The flip side is that the
+  token figures in the table above leave MCP out**, and MCP is now the bigger block: all 41 dashboard
+  schemas, roughly 5,100 tokens when measured in `7ff2be5`, ride every cron turn on top of the
+  ~1.5k native. `no_mcp` cannot trim that: it drops a whole server, and the poll needs three of
+  that server's tools (`get_pending_videos`, `approve_video`, `scan_video`). So the lever left for
+  the poll is how often it runs, not what it loads. That is why `SPZ_CONTENT_OPS_CRON` defaults to
+  business hours.
 - **`cron` is its own platform key** with its own default. Narrowing `discord` alone would leave
   every scheduled turn — including the hourly content-ops poll, the most frequent recurring cost on
   this fleet — still paying for the full bundle. That one is the bigger saving of the two.
@@ -726,7 +732,12 @@ Three things worth knowing before touching this:
 **Voice, speed and instructions are three different things, and only the first is timbre.**
 `SPZ_TTS_VOICE` picks who is speaking; `SPZ_TTS_SPEED` and `SPZ_TTS_INSTRUCTIONS` shape how. None of
 them touch *what* is said — TTS reads the reply text verbatim, so a chatty agent in a British voice
-is still chatty. Register and brevity come from `SPZ_SOUL_MD`. This is the distinction that makes
+is still chatty. Register and brevity come from `SOUL.md`, and only part of that is set in Railway.
+`spz-boot.sh` adds a "How to answer" block (verdict first, blunt but not falsely certain, no
+preamble) to `SPZ_SOUL_MD` before it writes the file. That text lives in the script, not in a
+Railway variable, so edit it there. `SPZ_ANSWER_STYLE=none` leaves it out. It is also skipped when
+`SPZ_SOUL_MD` is empty, so the `docker/SOUL.md` seed is never overwritten with guidance and no
+identity. This is the distinction that makes
 "it doesn't sound right" a SOUL fix far more often than a voice fix.
 
 Four traps here, all of which this file has hit variants of before:
