@@ -21,6 +21,7 @@ fork's own conventions are written down, and most are there because something br
 | File | Owner | Covers |
 |---|---|---|
 | `SPZ.md` | this fork | What SPZ is, the files every fork commit touches, the generated `config.yaml`, the `SPZ_`-vs-framework naming rule, per-persona containers, commands, and the invariants that have actually broken here |
+| `SPZ-HISTORY.md` | this fork | The incidents and reasoning behind `SPZ.md`'s rules, moved out so they are not loaded every session. **Not auto-loaded** — read the relevant section before changing one of those rules, or before splitting the deployment back into per-persona services |
 | `AGENTS.md` (~1350 lines) | upstream | The canonical development guide: contribution rubric, footprint ladder, plugin/skill/toolset internals, prompt-caching policy, profile rules, testing standards |
 | `CONTRIBUTING.md` | upstream | Cross-platform (Windows) rules and the skill-vs-tool decision guide |
 | `../spz-dashboard/CLAUDE.md` | sibling SPZ repo | The dashboard and the MCP server this agent talks to — `api/mcp.ts`, `api/_lib/spzAgent.ts`. A separate checkout, but present beside this one, so every claim `SPZ.md` makes about the MCP surface is checkable rather than remembered |

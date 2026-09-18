@@ -30,11 +30,16 @@ first two are still moving:
 - `SPZ.md` (and `CLAUDE.md`, which only imports it) — the fork's own guidance. Four of the last six
   commits touch it, because the reasoning behind a `spz-boot.sh` change does not fit in the shell
   diff. Treat a behaviour change here as incomplete until this file describes it.
+  `SPZ-HISTORY.md` holds the incidents and reasoning behind the rules here, and is not
+  auto-loaded: rules and how to follow them go in this file, the story of how one was learned
+  goes there, with a one-line pointer left behind.
 - `docker/stage2-hook.sh` — s6-overlay UID remap / `HERMES_HOME` ownership. Settled; last touched
   July 2026, and superseded in practice because Railway's custom start command runs `spz-boot.sh`
   directly as root and bypasses the s6 entrypoint entirely (which is why `spz-boot.sh` does its own
   `chown` at the end).
 - `railway.json` — three lines, unchanged since the gateway invocation was first wired up.
+- `scripts/spz-boot-harness.sh` — the stubbed boot harness for `spz-boot.sh`; see "Verifying a
+  `spz-boot.sh` change" below. Moves with `spz-boot.sh`: a new behaviour there wants a block here.
 - `spz-skills/` — the fork's own skill tree, shipped in the image and named in the generated
   config as `skills.external_dirs`. Prose, not code: it changes what the agent knows rather than
   what the container does, so it is the one entry here that no boot harness can check.
@@ -127,7 +132,7 @@ cosmetic:
 |---|---|---|
 | `git diff 3a1a3c7 HEAD` | eleven files more than the row below | Wrong — sweeps in the upstream work listed above |
 | `git diff 111544d HEAD` | the fork's whole surface | Right baseline, wrong set: it counts this file, and `spz-skills/`, which are both prose |
-| the same, plus `-- . ':(exclude)SPZ.md' ':(exclude)CLAUDE.md' ':(exclude)spz-skills'` | 7 files, 1364 insertions, 10 deletions (re-derived at `31bb8ea`; it read 1315 before the answer-style and Dubai commits) | The code surface, and the only row here that holds still |
+| the same, plus `-- . ':(exclude)SPZ.md' ':(exclude)SPZ-HISTORY.md' ':(exclude)CLAUDE.md' ':(exclude)spz-skills'` | 8 files, 1467 insertions, 10 deletions (re-derived when the boot harness moved out of this file into `scripts/`, adding a file and 103 lines; it read 7 files and 1364 before that) | The code surface, and the only row here that holds still |
 
 Run the first one unrestricted and `usage_pricing.py`, `models.py` and the model catalog look
 fork-touched; re-applying those over a merge would be re-applying upstream's own commits back on top
@@ -135,21 +140,11 @@ of upstream. The four-path figure below survives the correction — `git diff` o
 byte-identical from either baseline, because none of the seven commits touched them — but the
 *habit* of reaching for `3a1a3c7` does not.
 
-**A total that counts `SPZ.md` can never be right at rest, because writing the number changes the
-number.** The first two rows once carried file counts for that reason — the theory being that a
-file count is the stable half and only the insertion total moves. That theory was wrong, and this
-table proved it: those rows read 20 and 9 files, and by the time anyone checked they were 42 and 31.
-Their insertion totals had already read 2003, then 2105, then 2131 — each recount dated by its own
-edit, by exactly the lines that edit added, and each one true for about the length of one commit.
-Neither half was measuring code. **`spz-skills/` is what settles it**: a skill tree is prose, it
-grows by hundreds of lines at a time, and it moved every figure in this table without one line of
-code changing. So the exclusion list has to name it alongside this file. The third row is the way
-out: a pathspec excluding `SPZ.md`, `CLAUDE.md` and `spz-skills/` measures the code alone, so it
-moves only when code moves, and it is the only figure here worth quoting. Re-run `git diff --stat`
-rather than trusting even that one, the same way the fork point above is re-derived rather than
-remembered; the shape of the claim — which files can
-conflict, and that the Python half is eight small hunks — is what is meant to survive, not the
-arithmetic.
+**Only the third row is worth quoting.** Any total that counts prose — this file, `SPZ-HISTORY.md`,
+`CLAUDE.md`, `spz-skills/` — moves with every doc edit without one line of code changing, so it is
+never right at rest. Re-run `git diff --stat` rather than trusting even the third row; what is meant
+to survive is the shape of the claim — which files can conflict, and that the Python half is eight
+small hunks — not the arithmetic. (How the first two rows drifted: `SPZ-HISTORY.md`.)
 
 **The conflict surface is much smaller than the fork-touched list above suggests, and which half a
 file falls into follows entirely from who added it.** A file this fork created has no upstream
@@ -162,7 +157,9 @@ arrived in the upstream snapshot and was subsequently edited here can. `git log 
 | `docker/spz-boot.sh` | this fork (`299a14c`) | No — fork-only, and by far the largest thing here |
 | `SPZ.md` | this fork (`3af59e8`) | No |
 | `CLAUDE.md` | this fork (`331da16`) | No |
+| `SPZ-HISTORY.md` | this fork | No |
 | `railway.json` | this fork (`a166836`) | No |
+| `scripts/spz-boot-harness.sh` | this fork | No |
 | `spz-skills/` | this fork | No — fork-only, and upstream has no such path |
 | `Dockerfile` | upstream root (`3a1a3c7`) | **Yes** |
 | `docker/stage2-hook.sh` | upstream root (`3a1a3c7`) | **Yes** |
@@ -180,16 +177,9 @@ both settled and in code upstream is unlikely to be moving. Watch the `VOLUME` d
 it is the one hunk a merge can undo by *restoring* a line rather than by clobbering one of ours,
 which no conflict marker will point at.
 
-**That figure stood at 11 and 181 for one commit, and how it got there matters more than the
-number.** It was written as a correction, with the earlier 12 and 184 dismissed in passing as "a
-miscount, not drift" — but the two counts were never measuring the same thing. 11 and 181 is this
-diff over *four* paths, silently dropping `.gitignore`, which the table above marks conflictable and
-which contributes exactly the missing hunk and the missing three insertions. Nothing had drifted and
-nothing was miscounted: the pathspec narrowed, the prose kept saying "four" while the table went on
-saying five, and the arithmetic was impeccable on both sides of the disagreement. That is the
-failure mode this whole section is written against, and it is worse than a stale number — a stale
-number is at least wrong about something checkable. **So re-derive the pathspec from the table, not
-just the figure**, and note that the hunk count is context-dependent (`-U0` reports 13, not 12):
+**Re-derive the pathspec from the table, not just the figure** — a count once read 11 and 181
+because it silently used four of these five paths (`SPZ-HISTORY.md` has the story). The hunk count is also
+context-dependent (`-U0` reports 13, not 12):
 
 ```bash
 git diff --stat 111544d HEAD -- Dockerfile docker/stage2-hook.sh gateway/run.py tools/tts_tool.py .gitignore
@@ -255,20 +245,11 @@ Four conventions in `spz-boot.sh`, each of which has caused a silent failure:
   name is present, so a superseded job keeps running on its old schedule forever. `spz-boot.sh`
   removes `daily-roundup`, `daily-roundup-discord` and `content-ops-poll` on every boot.
 - **A removal line has to live OUTSIDE the enable check**, or the feature cannot be turned off.
-  Cron jobs are stored in `$HERMES_HOME`, which is the Railway volume, so they survive every
-  redeploy. With the removals nested inside `if [ -n "${SPZ_CONTENT_OPS_POLL}" ]`, unsetting that
-  variable skipped the whole block: it stopped the job being *recreated* and did nothing about the
-  one already there, which kept firing hourly against a pipeline the dashboard had taken over. This
-  is not hypothetical — it happened, and the symptom was a poll that survived the removal of its own
-  switch. `hermes cron remove` on an absent job fails harmlessly, so an unconditional removal costs
-  nothing. **`spz-daily-roundup` was the last block still carrying this shape, and no longer is**:
-  the two legacy-name removals now run unconditionally, and a separate
-  `if [ -z "${SPZ_ROUNDUP_GUARD}" ]` removes `spz-daily-roundup` itself when the switch is off —
-  the content-ops poll's shape exactly, arrived at the same way. Verified with the harness below:
-  boot once with `SPZ_ROUNDUP_ENABLED` set, then again with it (and `DISCORD_ALLOWED_USERS`, which
-  it still falls back to) unset, and the second boot logs `hermes cron remove spz-daily-roundup`,
-  leaving the poll as the only job. The rule stays stated as a rule because it governs the next
-  block added here, not because anything is still outstanding.
+  Cron jobs live in `$HERMES_HOME` — the Railway volume — so they survive every redeploy; a removal
+  nested inside the feature's `if [ -n … ]` stops the job being *recreated* and leaves the existing
+  one firing forever. `hermes cron remove` on an absent job fails harmlessly, so remove
+  unconditionally. Both current jobs follow this shape (`spz-daily-roundup` via
+  `if [ -z "${SPZ_ROUNDUP_GUARD}" ]`), and harness block 2 checks it. (The incident: `SPZ-HISTORY.md`.)
 - **Anything YAML 1.1 would coerce must stay quoted** in the emitted config, because it is read with
   `yaml.safe_load`. Two live instances, both of which failed silently: Discord channel ids unquoted
   parse as ints, and every `channel_prompts` lookup (which keys on the adapter's string id) misses;
@@ -326,11 +307,10 @@ a comment in `hermes_cli/auth.py` (~line 1718, with the full ladder in the docst
 `OPENROUTER_API_KEY` set, every request then goes out with no Authorization header, and OpenRouter
 answers `401 Missing Authentication header`.
 
-That is exactly what setting `OPENAI_API_KEY` for voice did. Inference silently repointed at a
-provider with no credentials, and because `_gateway_provider_error_reply` sanitizes the chat reply to
-"Provider authentication failed", it reads as a bad Anthropic key. **It is not** — rotating
-`ANTHROPIC_API_KEY` cannot fix it, because Anthropic is never called. Two rotations were spent
-before the real error surfaced in the logs.
+**The symptom misleads.** `_gateway_provider_error_reply` sanitizes the chat reply to "Provider
+authentication failed", which reads as a bad Anthropic key. It is not — rotating
+`ANTHROPIC_API_KEY` cannot fix it, because Anthropic is never called. Look for OpenRouter's 401 in
+the logs first. (Setting `OPENAI_API_KEY` for voice did exactly this once: `SPZ-HISTORY.md`.)
 
 Step 2 above is the fix, and it only works for a **mapping**: `isinstance(cfg, dict)` is `False` for
 a bare string, so the string form this file used until then could never pin a provider at all.
@@ -363,15 +343,11 @@ Two consequences worth keeping:
 deployment is reading the dashboard over MCP and answering in `#spz`: 41 MCP tools plus the scoped
 native set, nowhere near Haiku's 200k window, and none of it needs a frontier model to dispatch.
 
-**Count the tools, not the `registerTool` calls — and re-count them rather than quoting this
-number.** It said 16 for a long time, which is the number of call sites in the dashboard repo's
-`api/mcp.ts` — but one of them sits inside a `for (const schema of TOOL_SCHEMAS)` loop that
-registers every entry of `TOOLS` in `api/_lib/spzAgent.ts`. Correcting that gave 13 static + 25
-dynamic = 38, which was true when it was written and is **wrong now**: `TOOLS` has since grown three
-finance tools (`get_account_balances`, `search_transactions`, `get_spend_by_category`), so the real
-exposure is 13 + 28 = **41**. It was 15 + 25 = 40 before that, until `list_pending_approvals` and
-`resolve_pending_approval` went with the approval queue. The ~4k-token figure for the schema block
-was measured at 25 dynamic tools and has not been re-measured since; treat it as a floor.
+**Count the tools, not the `registerTool` calls — and re-count rather than quote.** One
+`registerTool` site in `api/mcp.ts` is a `for (const schema of TOOL_SCHEMAS)` loop registering
+every entry of `TOOLS` in `api/_lib/spzAgent.ts`, so exposure is (sites − 1) + `TOOLS`: 13 + 28 =
+41, re-derived at `93ae2a4`. The ~4k-token schema figure was measured at 25 dynamic tools; treat it
+as a floor. (The count's earlier values: `SPZ-HISTORY.md`.)
 
 The number moves whenever the dashboard ships a tool, and nothing on this side notices — which is
 why the two commands matter more than the figure. Both are cheap now that `../spz-dashboard` is
@@ -383,40 +359,16 @@ grep -c 'registerTool(' api/mcp.ts    # minus 1: one site IS the TOOL_SCHEMAS lo
 grep -c "^    name: '" api/_lib/spzAgent.ts  # TOOLS is the file's only such array
 ```
 
-The economics are better than the published rates suggest, for a reason that is not on any pricing
-page. **Haiku 4.5 still uses the OLD tokenizer.** Sonnet 5 — and every other Claude 4.7-or-later
-model — counts roughly 30% more tokens for the same text, so Sonnet's effective rate on this
-workload is nearer `$2.60/$13.00` than the published `$2/$10`. Against Haiku's `$1/$5` that makes
-the real gap about **2.6x, not 2x**, and it is paid on every cron firing whether or not anyone is
-listening. Cache reads are half the price too (`$0.10` against `$0.20`).
+**The cost case is better than the published rates suggest**: Haiku 4.5 is on the old tokenizer,
+so the real gap to Sonnet 5 is about 2.6x rather than 2x, clawed back slightly by Haiku's larger
+hidden tool-use preamble. The arithmetic is in `SPZ-HISTORY.md`.
 
-One thing genuinely moves the other way: **Haiku's hidden tool-use preamble is larger** — Anthropic
-bills roughly 496 tokens on Haiku 4.5 against 354 on Sonnet 5 with `tool_choice: auto` (588 against
-474 with `any`), on top of our own schemas. It rides every call and claws a little back. Haiku is
-still clearly cheaper; it is just not the full 2.6x.
-
-**What this gives up changed shape when the approval queue was removed, and it got bigger.** This
-section used to name one path: a free-typed `YES 1234` in `#approvals`, where the AGENT — not the
-dashboard — called `list_pending_approvals`, matched the code, then called
-`resolve_pending_approval`, whose own description said approving *executes the original action*. A
-two-step chain ending in an exact-match argument with an irreversible consequence is precisely where
-a smaller model degrades first. That path is gone.
-
-**So are both of the things this file said contained it.** The Discord Approve/Deny buttons
-(`api/discord-interactions.ts` in the dashboard repo) resolved an approval deterministically with no
-model involved at all — that route is deleted outright. And `reject_video`, `submit_video` and
-`mark_posted` sat in `MANAGER_ALWAYS_GATED`, so no model could take a destructive action
-unilaterally — that set is deleted too, along with `UNGATED_SPZ_TOOLS` and the whole gate. **Every
-MCP tool now executes the moment the agent calls it**, `submit_video` — a real, irreversible OneUp
-publish — included.
-
-The exposure is therefore no longer picking the wrong code out of several pending approvals. It is a
-wrong `submit_video`, with nothing behind it: the tool schema and whichever model `HERMES_MODEL`
-names are the only things in front of an irreversible publish. That is a stronger argument for
-revisiting this default than anything this section carried before. It is written down rather than
-acted on because the cost case below is unchanged and the choice is Zach's — but the risk half of
-the trade is materially worse than it was when Haiku was chosen, and nothing here should read as
-though it still balances the way it did.
+**The risk side is worse than when Haiku was chosen: every MCP tool executes the moment the agent
+calls it.** The dashboard's approval queue, its Approve/Deny buttons and the `MANAGER_ALWAYS_GATED`
+set are all deleted, so `submit_video` — a real, irreversible OneUp publish — has nothing in front
+of it but the tool schema and whichever model `HERMES_MODEL` names. That is the strongest argument
+for revisiting this default. It is written down rather than acted on because the choice is Zach's,
+and nothing here should read as though the trade still balances the way it did.
 
 **If it does take a wrong action, the lever is a channel override, not a service revert.** A
 `platforms.discord.channel_overrides.<spz-id>.model` block pins a stronger model on `#spz` alone.
@@ -592,20 +544,9 @@ re-point both**, and a `SPZ_ROUNDUP_CRON`/`SPZ_CONTENT_OPS_CRON` set on Railway 
 container ran on London is still a London-shaped hour now being read as Dubai — check all three
 before concluding a schedule is what these defaults say.
 
-It was not always. For a stretch each persona — The Trainer, The Medical Team, The Manager, CLZ —
-was moving onto its own Railway service with its own bot and its own `SOUL.md`, scoped to its own
-channel, so that Zach talked to each agent directly instead of through a carrier. Before that,
-`hermes-spz` answered all four persona channels itself, primed by `channel_prompts` to hand each
-message to that persona's MCP tool and echo the reply back untouched. Both shapes are gone. The
-persona channels are abandoned rather than reassigned: SPZ does not relay them and does not answer
-them in its own voice either. Everything happens in `#spz`.
-
-The collapse cost exactly one Railway variable, `SPZ_RELAY_CHANNELS=none`, plus moving
-`SPZ_CONTENT_OPS_POLL` and `SPZ_CONTENT_OPS_CRON` off the deleted `hermes-manager`. That it was
-that cheap is not luck — it is the `SPZ_ROLE` default paying out. Every role-dependent branch in
-`spz-boot.sh` is written as "spz is the status quo, a persona is the departure", so a service that
-never sets `SPZ_ROLE` takes the same path it took before the variable existed. The one-container
-deployment is the branch the file was always written to favour.
+The persona channels (The Trainer, The Medical Team, The Manager, CLZ) are abandoned rather than
+reassigned: SPZ neither relays them nor answers them in its own voice. Everything happens in `#spz`.
+How the fleet got here, and why collapsing it cost one Railway variable, is in `SPZ-HISTORY.md`.
 
 **The persona machinery is still in `spz-boot.sh`, dormant, and that is deliberate.** `SPZ_ROLE`,
 `SPZ_PERSONA_CHANNEL`, `SPZ_PERSONA_CRON`, the `DISCORD_ALLOW_BOTS` line and the fleet roster are
@@ -634,34 +575,14 @@ left to miss. Dropping the variable costs a free-response channel nobody writes 
 `SPZ_CHANNEL_HOME` alongside it is the failure above. The pairing this file used to insist on has
 become a single dependency, and the two halves must not be tidied up together.
 
-#### Why the fleet was shaped the way it was
+#### The one rule the old fleet leaves behind
 
-Worth keeping, because it is the reasoning any future split-out would otherwise have to rediscover
-the hard way, and because two of the rules still constrain what can be built here.
-
-There was deliberately **no shared `#agents` channel**, and the argument was structural rather than
-stylistic. This framework has no loop guard — nothing counts bot-to-bot turns or breaks a cycle.
-It did not need one, because exactly one bot listened per channel and no bot wakes on its own
-messages, so an exchange ran out on its own. Two listeners in one room is the single arrangement
-nothing here stops. **That rule survives the collapse and still applies**: if a second bot is ever
-pointed at `#spz`, nothing in this framework prevents the two of them from talking until a budget
-runs out.
-
-For the same reason `hermes-spz` was kept blind to bot messages (`DISCORD_ALLOW_BOTS` left at its
-`none` default, set to `all` on persona roles only). It relayed the persona channels and posted
-those answers back as a bot, so if it had also listened to bots it would have answered and
-re-relayed its own relays. The hazard was removed structurally instead of by getting a cutover order
-right — which is why the collapse needed no cutover order either.
-
-The outbound half was a roster of the other three agents, each as `send_message with target
-discord:<id>`, concatenated into `SPZ_SOUL_MD` before `SOUL.md` was written. It went in SOUL rather
-than `channel_prompts` because SOUL is the only context that survives into a **cron-triggered**
-turn, and it concatenated into the variable rather than appending to the file so that a restart
-could not accumulate a roster per boot. Self was excluded from that roster: an agent handed its own
-channel id will post to it, and since a bot never wakes on its own messages that send looks
-delivered and goes nowhere.
-
-None of it runs now. All of it is one Railway variable away from running again.
+**Never point a second bot at `#spz`.** This framework has no loop guard — nothing counts
+bot-to-bot turns or breaks a cycle. It has never needed one, because exactly one bot listens per
+channel and no bot wakes on its own messages, so an exchange runs out on its own. Two listeners in
+one room is the single arrangement nothing here stops, and they would talk until a budget runs out.
+The rest of the fleet's design — `hermes-spz` kept blind to bots, the SOUL roster, self-exclusion —
+is in `SPZ-HISTORY.md`, and is what any future split-out should read first.
 
 ### Talking to an agent in a Discord voice channel
 
@@ -843,31 +764,14 @@ there if it joins but neither hears nor speaks.
 
 Run these from Git Bash on this Windows machine (`scripts/run_tests.sh` is POSIX sh).
 
-**First, a search rule, and the trap this checkout used to contain.** `.claude/` is gitignored
-(that is the whole `.gitignore` hunk above), so `git grep` never looks inside it — but `grep -r` and
-`find` do, and `.claude` sorts before every real directory, so anything living there comes back
-**first**. An agent worktree once left a complete second copy of this repo at
-`.claude/worktrees/agent-…` — 2938 Python files, 145 MB — and every unrestricted search returned the
-stale copy ahead of the file it shadowed:
-
-```
-$ grep -rln "resolve_requested_provider" --include=*.py .
-./.claude/worktrees/agent-.../hermes_cli/runtime_provider.py   <- stale copy, returned first
-./hermes_cli/runtime_provider.py                                <- the file you actually want
-```
-
-Editing the wrong one fails silently in the worst way: the change is real, the file is right, and
-nothing you deploy ever contains it.
-
-**That copy is gone** — deleted after checking that every fork-touched file in it hashed to a blob
-already in history, so nothing was lost with it, along with the stale `.git/worktrees/` admin entry
-that made every `git commit` print a `Permission denied` prune error. `.claude/worktrees/` itself
-survives as an empty directory — it shadows nothing, and the search above now returns one hit per
-path, but the path existing is not evidence the copy is back. The rule outlives it: the next
-agent worktree lands in the same place, is ignored by the same line, and announces itself just as
-loudly, which is to say not at all. Search with `git grep`, or exclude the directory explicitly
-(`grep -r --exclude-dir=.claude`; `rg` honours the ignore file already). And if an unrestricted
-search ever returns two hits for a path that exists once, read the prefix before believing either.
+**Search with `git grep`, not `grep -r` or `find`.** `.claude/` is gitignored (that is the whole
+`.gitignore` hunk above), so `git grep` never looks inside it — but `grep -r` and `find` do, and
+`.claude` sorts before every real directory, so an agent worktree at `.claude/worktrees/agent-…`
+returns its stale copy of a file **ahead of** the real one. Editing that copy fails silently: the
+change is real and nothing you deploy ever contains it. `.claude/worktrees/` currently exists as an
+empty directory, which is not evidence a copy is back. Use `git grep`, `rg` (it honours the ignore
+file), or `grep -r --exclude-dir=.claude`; and if a search returns two hits for a path that exists
+once, read the prefix before believing either. (The incident: `SPZ-HISTORY.md`.)
 
 ```bash
 # FIRST, on a fresh checkout: there is no .venv here, and uv/ruff/ty are not on
@@ -928,121 +832,24 @@ no opinion about an instruction upstream wrote deliberately. Railway's build pip
 push is still the only thing that catches it, which is the whole reason that deletion is called out
 as the hunk a merge can undo without leaving a conflict marker.
 
-Put a stub `hermes` (log `$*`, `exit 0`) and a stub `chown` (`exit 0`, since there's no `hermes`
-user locally) in a temp dir, then run the script with that dir prepended to `PATH` and `HERMES_HOME`
-pointed at an empty temp dir. The final `exec hermes gateway run` lands on the stub, so the script
-exits cleanly and leaves the two generated files behind to inspect.
+**`scripts/spz-boot-harness.sh` is that check** — run it from Git Bash anywhere in the repo. It puts
+a stub `hermes` and a stub `chown` (there's no `hermes` user locally) earlier on `PATH`, points
+`HERMES_HOME` at throwaway temp dirs, and boots the script in each shape below; the final
+`exec hermes gateway run` lands on the stub, so every boot exits cleanly and leaves `config.yaml`
+and `SOUL.md` behind to inspect. It prints one labelled section per check, and a failing check
+prints `FAIL` or `MISSING` rather than changing the exit code, so read the output. **The stub
+`hermes` keeps a fake cron store inside `$HERMES_HOME`** rather than merely logging, and that is
+load-bearing: without it the existence check always sees an empty fleet, every job is created on
+every boot, and "the second run must not create a duplicate" cannot be checked at all. When
+`spz-boot.sh` gains a behaviour, add a labelled block for it there.
 
-That is the whole harness, and it is written out below rather than described because a recipe nobody
-runs is exactly the failure this section exists to prevent. Paste it into Git Bash from anywhere in
-the repo; it prints one labelled section per check and exits 0 when they all pass. **The stub
-`hermes` keeps a fake cron store inside `$HERMES_HOME`** rather than merely logging, which is the
-one embellishment on the prose above and is load-bearing: without it the existence check always sees
-an empty fleet, every job is created on every boot, and "the second run must not create a duplicate"
-cannot be checked at all.
-
-```bash
-cd "$(git rev-parse --show-toplevel)"
-
-# --- the harness: a stub `hermes` and `chown` earlier on PATH ---------------
-STUB="$(mktemp -d)"; PATH="$STUB:$PATH"; export PATH
-printf '#!/bin/sh\nexit 0\n' > "$STUB/chown"
-cat > "$STUB/hermes" <<'STUB_EOF'
-#!/bin/sh
-# Logs every call, and models the cron store on the Railway volume, so that
-# "the second boot must not create a duplicate" is checkable, not assumed.
-echo "hermes $*" >> "$STUB_LOG"
-JOBS="$HERMES_HOME/.stub-cron-jobs"
-case "$1 $2" in
-  "cron list")   [ -f "$JOBS" ] && sed 's/^/Name:      /' "$JOBS"; exit 0 ;;
-  "cron create") while [ $# -gt 0 ]; do
-                   if [ "$1" = "--name" ]; then echo "$2" >> "$JOBS"; break; fi
-                   shift
-                 done; exit 0 ;;
-  "cron remove") grep -qxF "$3" "$JOBS" 2>/dev/null || exit 1  # absent => fail, as the real CLI does
-                 grep -vxF "$3" "$JOBS" > "$JOBS.t"; mv "$JOBS.t" "$JOBS"; exit 0 ;;
-esac
-exit 0
-STUB_EOF
-chmod +x "$STUB/hermes" "$STUB/chown"
-
-# $1 = a label for this boot's log; everything else comes from the caller's env.
-boot() { STUB_LOG="$HERMES_HOME/$1.log"; export STUB_LOG; : > "$STUB_LOG"
-         sh docker/spz-boot.sh; }
-
-MCP="SPZ_MCP_URL=https://example.invalid/mcp SPZ_MCP_TOKEN=tok"
-
-# --- 1. the spz role, the live shape, booted twice into one HERMES_HOME -----
-SPZ="$(mktemp -d)"
-( export HERMES_HOME="$SPZ" $MCP SPZ_SOUL_MD='You are SPZ.' \
-    SPZ_RELAY_CHANNELS=none \
-    SPZ_CHANNEL_HOME=111111111111111111 SPZ_CHANNEL_APPROVALS=222222222222222222 \
-    SPZ_ROUNDUP_ENABLED=1 SPZ_CONTENT_OPS_POLL=1
-  boot spz1; cp "$SPZ/config.yaml" "$SPZ/config.1.yaml"; boot spz2 )
-
-echo "== IDEMPOTENCY: config.yaml identical across two boots =="
-diff "$SPZ/config.1.yaml" "$SPZ/config.yaml" && echo "  OK"
-echo "== IDEMPOTENCY: one job per name, not two =="; sort "$SPZ/.stub-cron-jobs"
-echo "== boot 2 cron calls (remove+create for the poll; no second roundup create) =="
-grep '^hermes cron' "$SPZ/spz2.log" | cut -c1-70
-echo "== TOOLSETS: both a discord and a cron key; cronjob rides the poll flag =="
-sed -n '/^platform_toolsets:/,/^[a-z]/p' "$SPZ/config.yaml"
-echo "== QUOTED SCALARS =="; grep '"' "$SPZ/config.yaml"
-
-# --- 2. the roundup switch OFF: the job must be REMOVED, not merely not made -
-( export HERMES_HOME="$SPZ" $MCP SPZ_RELAY_CHANNELS=none SPZ_CONTENT_OPS_POLL=1 \
-    DISCORD_ALLOWED_USERS=   # the pre-rename fallback; leave it set and the switch is inert
-  boot spzoff )
-echo "== ROUNDUP OFF: spz-daily-roundup removed unconditionally =="
-grep '^hermes cron remove spz-daily-roundup' "$SPZ/spzoff.log" || echo "  MISSING — the bug is back"
-echo "== ROUNDUP OFF: remaining jobs =="; sort "$SPZ/.stub-cron-jobs"
-
-# --- 3. a persona role -------------------------------------------------------
-P="$(mktemp -d)"
-( export HERMES_HOME="$P" $MCP SPZ_SOUL_MD='You are The Trainer.' \
-    SPZ_ROLE=trainer SPZ_PERSONA_CHANNEL=333333333333333333 \
-    SPZ_CHANNEL_TRAINER=333333333333333333 SPZ_CHANNEL_CLINIC=444444444444444444 \
-    SPZ_CHANNEL_MANAGER=555555555555555555 SPZ_CHANNEL_CLZ=666666666666666666
-  boot persona )
-echo "== SELF-EXCLUSION: the other three ids, never 333333333333333333 =="
-grep 'send_message with target' "$P/SOUL.md"
-echo "== persona: no roundup created =="
-grep '^hermes cron create' "$P/persona.log" || echo "  OK: none"
-
-# --- 4. relays on — the only shape that still emits channel_prompts ----------
-R="$(mktemp -d)"
-( export HERMES_HOME="$R" $MCP SPZ_CHANNEL_TRAINER=777777777777777777
-  boot relay )
-echo "== QUOTED SCALARS: channel_prompts keys must be \"777...\", not 777... =="
-grep -A1 'channel_prompts:' "$R/config.yaml" | cut -c1-60
-
-# --- 4b. fork skills: the block, and the two ways back ----------------------
-echo "== SKILLS: dir resolved absolute, path quoted =="
-sed -n '/^skills:/,/^[a-z]/p' "$SPZ/config.yaml"
-S1="$(mktemp -d)"
-( export HERMES_HOME="$S1" $MCP SPZ_RELAY_CHANNELS=none SPZ_SKILLS_DIR=none; boot skillsoff >/dev/null )
-echo "== SKILLS: SPZ_SKILLS_DIR=none omits the key =="
-grep -q '^skills:' "$S1/config.yaml" && echo "  FAIL: key emitted" || echo "  OK: absent"
-S2="$(mktemp -d)"
-( export HERMES_HOME="$S2" $MCP SPZ_RELAY_CHANNELS=none SPZ_SKILLS_DIR=/nonexistent
-  boot skillsmiss ) | grep -i 'skills dir' || echo "  FAIL: a missing dir must warn, not pass silently"
-
-# --- 5. the way back: `full` must omit the key ALTOGETHER --------------------
-F="$(mktemp -d)"
-( export HERMES_HOME="$F" $MCP SPZ_RELAY_CHANNELS=none \
-    SPZ_TOOLSETS=full SPZ_CRON_TOOLSETS=full
-  boot full )
-echo "== FULL: platform_toolsets must be absent, not empty =="
-grep -q platform_toolsets "$F/config.yaml" && echo "  FAIL: key emitted" || echo "  OK: absent"
-```
-
-What each labelled section is actually asking, and why none of the five can be dropped:
+What each labelled section is asking, and why none of the five can be dropped:
 
 - **Both role paths** — blocks 1 and 3. `SPZ_ROLE=<persona>` (the script accepts `trainer`,
   `clinic`, `manager`, `clz`; anything unrecognized warns and is treated as a persona) and the
   default `spz` take different branches almost everywhere. A persona emits the fleet roster into
   `SOUL.md` and logs `Role trainer admits messages from other agents`; `spz` emits neither and
-  instead logs `Free-response channels derived: …`. Both lines appear in the run above, and their
+  instead logs `Free-response channels derived: …`. Both lines appear in the harness output, and their
   absence is the check. Still worth running both precisely *because* Railway no longer does —
   since the collapse the persona path is exercised only by hand, so a change that breaks it will not
   surface until someone tries to split out again.
@@ -1082,14 +889,10 @@ What each labelled section is actually asking, and why none of the five can be d
   Note that "no duplicate" is not "no churn": `spz-content-ops-poll` and `spz-persona-checkin`
   deliberately remove and recreate themselves on every boot (see the rule above), so expect a
   remove+create pair for each in the stub log — the check is `sort "$SPZ/.stub-cron-jobs"` showing
-  one line per name at the end, not one create in the log. **`spz-daily-roundup` now has that same
-  shape and no longer is the exception this bullet used to describe.** It was created by name check
-  until `cd2238e` moved it to 2PM, which is exactly when the name check became the bug — it asked
-  only whether the job existed, never whether its schedule still matched this file, so the hour was
-  pinned to whatever the container's first boot wrote. Boot 2 therefore shows a remove+create pair
-  for it too, and no `hermes cron list` at all. A run that shows one create per name and two jobs at
-  the end is correct; treating the roundup's recreate as a duplicate is reading this bullet's old
-  version.
+  one line per name at the end, not one create in the log. `spz-daily-roundup` has the same
+  shape — removed and recreated every boot, so a schedule edit actually takes — so boot 2
+  shows a remove+create pair for it too. One create per name and two jobs at the end is
+  correct; the roundup's recreate is not a duplicate. (Why it changed: `SPZ-HISTORY.md`.)
 
 Keep it **POSIX sh**. The shebang is `#!/bin/sh` and `railway.json` invokes it as
 `sh /opt/hermes/docker/spz-boot.sh`, so bashisms — `[[ ]]`, arrays, `local`, `+=` — break it in the
